@@ -54,11 +54,11 @@ struct TargetHeaderCase
 
 const std::vector<TargetHeaderCase> TARGET_HEADER_CASES{
     {[]() -> std::shared_ptr<ITargetStrategy> {
-         return std::make_shared<StandardTarget>(StandardTarget::Verdict::ACCEPT);
+         return std::make_shared<StandardTarget>(Verdict::ACCEPT);
      },
      EMPTY_TARGET_NAME, XT_ALIGN(sizeof(xt_standard_target)), "StandardAccept"},
     {[]() -> std::shared_ptr<ITargetStrategy> {
-         return std::make_shared<StandardTarget>(StandardTarget::Verdict::DROP);
+         return std::make_shared<StandardTarget>(Verdict::DROP);
      },
      EMPTY_TARGET_NAME, XT_ALIGN(sizeof(xt_standard_target)), "StandardDrop"},
     {[]() -> std::shared_ptr<ITargetStrategy> {
@@ -92,7 +92,7 @@ INSTANTIATE_TEST_SUITE_P(Target, TargetHeaderTest, ::testing::ValuesIn(TARGET_HE
 
 struct VerdictCase
 {
-    StandardTarget::Verdict verdict;
+    Verdict verdict;
     int expectedKernelVerdict;
     const char* name;
 };
@@ -101,9 +101,9 @@ struct VerdictCase
    offset (>= 0); RETURN has its own negative constant.
 */
 const std::vector<VerdictCase> VERDICT_CASES{
-    {StandardTarget::Verdict::ACCEPT, ACCEPT_VERDICT, "Accept"},
-    {StandardTarget::Verdict::DROP, DROP_VERDICT, "Drop"},
-    {StandardTarget::Verdict::RETURN, RETURN_VERDICT, "Return"},
+    {Verdict::ACCEPT, ACCEPT_VERDICT, "Accept"},
+    {Verdict::DROP, DROP_VERDICT, "Drop"},
+    {Verdict::RETURN, RETURN_VERDICT, "Return"},
 };
 
 class StandardTargetVerdictTest : public ::testing::TestWithParam<VerdictCase>

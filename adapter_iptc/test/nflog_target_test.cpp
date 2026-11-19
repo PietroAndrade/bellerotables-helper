@@ -261,9 +261,7 @@ const std::vector<NflogReadCase> NFLOG_DECODED_CASES{
 
 const std::vector<NflogReadCase> NFLOG_REJECTED_CASES{
     {[]() {
-         return RuleBuilder()
-             .setTarget(std::make_shared<StandardTarget>(StandardTarget::Verdict::ACCEPT))
-             .build();
+         return RuleBuilder().setTarget(std::make_shared<StandardTarget>(Verdict::ACCEPT)).build();
      },
      std::nullopt, "StandardTargetIsNotNflog"},
     {[]() {

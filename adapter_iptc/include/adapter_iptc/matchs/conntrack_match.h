@@ -1,6 +1,7 @@
 #ifndef CONNTRACK_MATCH_H
 #define CONNTRACK_MATCH_H
 
+#include "adapter_iptc/dtos/conntrack.h"
 #include "adapter_iptc/template_match.h"
 
 #include <cstdint>
@@ -8,14 +9,7 @@
 class ConntrackMatch : public TemplateMatch
 {
 public:
-    enum class State : uint8_t
-    {
-        NEW,
-        ESTABLISHED_RELATED,
-        INVALID
-    };
-
-    explicit ConntrackMatch(State state);
+    explicit ConntrackMatch(ConntrackState state);
 
 protected:
     [[nodiscard]] const char* name() const override;
@@ -24,7 +18,7 @@ protected:
     void fillData(unsigned char* data) const override;
 
 private:
-    /* LEARN: the two values State stands for in xt_conntrack_mtinfo3. */
+    /* LEARN: the two values a ConntrackState stands for in xt_conntrack_mtinfo3. */
     struct Flags
     {
         uint16_t matchFlags;
@@ -33,7 +27,7 @@ private:
 
     Flags m_flags;
 
-    [[nodiscard]] static Flags resolve(State state);
+    [[nodiscard]] static Flags resolve(ConntrackState state);
 };
 
 #endif

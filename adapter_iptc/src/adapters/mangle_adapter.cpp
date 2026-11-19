@@ -36,7 +36,7 @@ void MangleAdapter::addConntrackRule(MarkParam mark, ConntrackParam conntrack)
 {
     auto markMatch = std::make_shared<MarkMatch>(mark.mark);
     auto conntrackMatch = std::make_shared<ConntrackMatch>(conntrack.state);
-    auto acceptTarget = std::make_shared<StandardTarget>(StandardTarget::Verdict::ACCEPT);
+    auto acceptTarget = std::make_shared<StandardTarget>(Verdict::ACCEPT);
 
     auto entry =
         RuleBuilder().setMatch(markMatch).setMatch(conntrackMatch).setTarget(acceptTarget).build();
