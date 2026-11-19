@@ -95,10 +95,12 @@ driven by the `Makefile`.
 
 **Interfaces:**
 - Consumes: `ExtensionParam` (Task 1).
+- Rationale (template, identity, `memcpy`, concept): [docs/adapter-iptc-payload-mapper.md](../../adapter-iptc-payload-mapper.md).
 - Produces:
   - `template <typename Payload> struct PayloadIdentity;` primary template declared, never defined. A specialization provides `static constexpr const char* NAME` and `static constexpr uint8_t REVISION`.
-  - `struct PayloadMapper { template <typename Payload> [[nodiscard]] static ExtensionParam toExtension(const Payload& payload); template <typename Payload> [[nodiscard]] static std::optional<Payload> fromExtension(const ExtensionParam& extension); };`
-  - Both `static_assert(std::is_trivially_copyable_v<Payload>)`. `toExtension` copies `sizeof(Payload)` bytes. `fromExtension` returns `nullopt` unless `name == NAME`, `revision == REVISION` and `payload.size() >= sizeof(Payload)`, then copies the first `sizeof(Payload)` bytes with `std::memcpy`.
+  - `template <typename Payload> concept KernelPayload = std::is_trivially_copyable_v<Payload> && requires { { PayloadIdentity<Payload>::NAME } -> std::convertible_to<const char*>; { PayloadIdentity<Payload>::REVISION } -> std::convertible_to<uint8_t>; };`
+  - `struct PayloadMapper { template <KernelPayload Payload> [[nodiscard]] static ExtensionParam toExtension(const Payload& payload); template <KernelPayload Payload> [[nodiscard]] static std::optional<Payload> fromExtension(const ExtensionParam& extension); };`
+  - Both constrained by `KernelPayload`, no `static_assert`. `toExtension` copies `sizeof(Payload)` bytes. `fromExtension` returns `nullopt` unless `name == NAME`, `revision == REVISION` and `payload.size() >= sizeof(Payload)`, then copies the first `sizeof(Payload)` bytes with `std::memcpy`.
 
 - [ ] **Step 1: Write the failing tests** with a test-only payload `struct TestPayload { uint32_t first; uint16_t second; };` and its `PayloadIdentity` specialization (`"test"`, revision 2) in the test file:
   - `PayloadMapperTest.ToExtensionTakesNameAndRevisionFromTheIdentity`: `name == "test"`, `revision == 2`, `payload.size() == sizeof(TestPayload)`.
@@ -106,9 +108,10 @@ driven by the `Makefile`.
   - `PayloadMapperTest.OtherNameIsNotDecoded`, `PayloadMapperTest.OtherRevisionIsNotDecoded`: edit `name` to `"other"` / `revision` to 3 → `nullopt`.
   - `PayloadMapperTest.ShortPayloadIsNotDecoded`: `payload.resize(sizeof(TestPayload) - 1)` → `nullopt`.
   - `PayloadMapperTest.LongerPayloadStillDecodes`: `payload.resize(sizeof(TestPayload) + 4, 0)` → decodes the original values (Review Focus 2).
+  - `PayloadMapperTest.ConceptAcceptsOnlyMappableTypes`: `static_assert(KernelPayload<TestPayload>)`, `static_assert(!KernelPayload<NoIdentity>)` (a trivially copyable struct with no specialization) and `static_assert(!KernelPayload<std::string>)`, written after the `TestPayload` specialization.
 - [ ] **Step 2: Run them to verify they fail.** `make configure-unit build-unit`. Expected: `mappers/payload_mapper.h` not found.
-- [ ] **Step 3: Implement `payload_mapper.h`.** Add a `LEARN` comment on why the primary template stays undefined (a struct without an identity does not compile) and where specializations live (the `.cpp` of the mapper that owns the struct).
-- [ ] **Step 4: Run them to verify they pass.** Gtest filter `PayloadMapperTest`. Expected: 6 passed.
+- [ ] **Step 3: Implement `payload_mapper.h`.** Short `LEARN` comments that point to the payload doc: on `PayloadIdentity` (left undefined; specializations live in the `.cpp` of the mapper that owns the struct), on `KernelPayload` (a specialization must be visible before the concept is first checked for its type), on the padding read back and on copying instead of `reinterpret_cast`.
+- [ ] **Step 4: Run them to verify they pass.** Gtest filter `PayloadMapperTest`. Expected: 7 passed.
 - [ ] **Step 5: Commit** (checkpoint): `feat(adapter_iptc): PayloadMapper with a payload identity trait`
 
 ### Task 3: `RuleMapper`
@@ -216,7 +219,8 @@ driven by the `Makefile`.
 - Delete: `include/adapter_iptc/template_match.h`, `src/matchs/template_match.cpp`, `include/adapter_iptc/targets/extension_target_template.h`, `src/targets/extension_target_template.cpp`, `include/adapter_iptc/i_target_strategy.h`, all of `include/adapter_iptc/matchs/`, `src/matchs/`, `include/adapter_iptc/targets/`, `src/targets/`, `include/adapter_iptc/mocks/mock_template_match.h`, `mock_target_strategy.h`, `mock_builder.h`, `include/adapter_iptc/rule_layout.h`, `src/rule_layout.cpp`, `test/match_test.cpp`, `test/target_test.cpp`, `test/nflog_target_test.cpp`
 - Create: `adapter_iptc/test/iptc_exception_test.cpp` (the two `IptcExceptionTest` cases, moved out of `nflog_target_test.cpp` unchanged)
 - Modify: `include/adapter_iptc/mappers/rule_mapper.h`, `src/mappers/rule_mapper.cpp`
-- Modify: `docs/adapter-iptc-rule-mapper.md` (status), `CLAUDE.md` (Components diagram names `MangleAdapter (adapter_iptc)`; check for stale class names)
+- Rationale: [docs/adapter-iptc-hierarchy-removal.md](../../adapter-iptc-hierarchy-removal.md) (what each hook of the hierarchy becomes, the boundary before and after).
+- Modify: `docs/adapter-iptc-rule-mapper.md`, `docs/adapter-iptc-hierarchy-removal.md` and `docs/adapter-iptc-payload-mapper.md` (status), `CLAUDE.md` (Components diagram names `MangleAdapter (adapter_iptc)`; check for stale class names)
 
 **Interfaces:**
 - Consumes: everything above; nothing outside `adapter_iptc` uses the deleted files (verify in Step 1).
