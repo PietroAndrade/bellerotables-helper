@@ -112,8 +112,7 @@ IptEntryPtr acceptEntryWith(const std::vector<std::shared_ptr<TemplateMatch>>& m
     {
         builder.setMatch(match);
     }
-    return builder.setTarget(std::make_shared<StandardTarget>(StandardTarget::Verdict::ACCEPT))
-        .build();
+    return builder.setTarget(std::make_shared<StandardTarget>(Verdict::ACCEPT)).build();
 }
 
 IptEntryPtr markEntry()
@@ -154,7 +153,7 @@ const std::vector<MatchHeaderCase> MATCH_HEADER_CASES{
     {[]() -> std::shared_ptr<TemplateMatch> { return std::make_shared<UdpMatch>(SAMPLE_PORT); },
      UDP_NAME, PORT_MATCH_REVISION, sizeof(xt_udp), IPPROTO_UDP, "Udp"},
     {[]() -> std::shared_ptr<TemplateMatch> {
-         return std::make_shared<ConntrackMatch>(ConntrackMatch::State::ESTABLISHED_RELATED);
+         return std::make_shared<ConntrackMatch>(ConntrackState::ESTABLISHED_RELATED);
      },
      CONNTRACK_NAME, CONNTRACK_REVISION, sizeof(xt_conntrack_mtinfo3), NO_PROTOCOL, "Conntrack"},
     {[]() -> std::shared_ptr<TemplateMatch> { return sampleHashlimit(); }, HASHLIMIT_NAME,
@@ -272,18 +271,18 @@ INSTANTIATE_TEST_SUITE_P(PortMatch, PortMatchTest, ::testing::ValuesIn(PORT_CASE
 
 struct ConntrackStateCase
 {
-    ConntrackMatch::State state;
+    ConntrackState state;
     uint16_t expectedFlags;
     uint16_t expectedStateMask;
     const char* name;
 };
 
 const std::vector<ConntrackStateCase> CONNTRACK_STATE_CASES{
-    {ConntrackMatch::State::NEW, XT_CONNTRACK_STATE | XT_CONNTRACK_DIRECTION,
-     NF_CT_STATE_BIT(IP_CT_NEW), "NewWithDirectionFlag"},
-    {ConntrackMatch::State::ESTABLISHED_RELATED, XT_CONNTRACK_STATE,
+    {ConntrackState::NEW, XT_CONNTRACK_STATE | XT_CONNTRACK_DIRECTION, NF_CT_STATE_BIT(IP_CT_NEW),
+     "NewWithDirectionFlag"},
+    {ConntrackState::ESTABLISHED_RELATED, XT_CONNTRACK_STATE,
      NF_CT_STATE_BIT(IP_CT_ESTABLISHED) | NF_CT_STATE_BIT(IP_CT_RELATED), "EstablishedRelated"},
-    {ConntrackMatch::State::INVALID, XT_CONNTRACK_STATE, NF_CT_STATE_INVALID_BIT, "Invalid"},
+    {ConntrackState::INVALID, XT_CONNTRACK_STATE, NF_CT_STATE_INVALID_BIT, "Invalid"},
 };
 
 class ConntrackStateTest : public ::testing::TestWithParam<ConntrackStateCase>
@@ -349,7 +348,7 @@ struct MarkReadCase
 const std::vector<MarkReadCase> MARK_DECODED_CASES{
     {markEntry, MarkParam{SAMPLE_MARK}, "MarkWrittenByMarkMatchRoundTrips"},
     {[]() {
-         return acceptEntryWith({std::make_shared<ConntrackMatch>(ConntrackMatch::State::NEW),
+         return acceptEntryWith({std::make_shared<ConntrackMatch>(ConntrackState::NEW),
                                  std::make_shared<MarkMatch>(SAMPLE_MARK)});
      },
      MarkParam{SAMPLE_MARK}, "MarkAfterAnotherMatchIsFound"},
@@ -361,9 +360,7 @@ const std::vector<MarkReadCase> MARK_DECODED_CASES{
 };
 
 const std::vector<MarkReadCase> MARK_REJECTED_CASES{
-    {[]() {
-         return acceptEntryWith({std::make_shared<ConntrackMatch>(ConntrackMatch::State::NEW)});
-     },
+    {[]() { return acceptEntryWith({std::make_shared<ConntrackMatch>(ConntrackState::NEW)}); },
      std::nullopt, "EntryWithoutMarkMatchHasNoMark"},
     {[]() { return acceptEntryWith({}); }, std::nullopt, "EntryWithoutMatchesHasNoMark"},
     {[]() {

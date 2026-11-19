@@ -61,7 +61,7 @@ const xt_entry_target* targetAt(const ipt_entry& entry)
 
 std::shared_ptr<StandardTarget> accept()
 {
-    return std::make_shared<StandardTarget>(StandardTarget::Verdict::ACCEPT);
+    return std::make_shared<StandardTarget>(Verdict::ACCEPT);
 }
 
 } // namespace

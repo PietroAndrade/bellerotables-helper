@@ -111,8 +111,8 @@ IptEntryPtr conntrackEntry()
 {
     return RuleBuilder()
         .setMatch(std::make_shared<MarkMatch>(SAMPLE_MARK))
-        .setMatch(std::make_shared<ConntrackMatch>(ConntrackMatch::State::NEW))
-        .setTarget(std::make_shared<StandardTarget>(StandardTarget::Verdict::ACCEPT))
+        .setMatch(std::make_shared<ConntrackMatch>(ConntrackState::NEW))
+        .setTarget(std::make_shared<StandardTarget>(Verdict::ACCEPT))
         .build();
 }
 
@@ -180,7 +180,7 @@ TEST_F(MangleAdapterTest, AddConntrackRuleAppendsMarkThenConntrackMatchWithAccep
             EXPECT_EQ(reinterpret_cast<const xt_standard_target*>(target)->verdict, ACCEPT_VERDICT);
         }));
 
-    m_adapter.addConntrackRule(MarkParam{SAMPLE_MARK}, ConntrackParam{ConntrackMatch::State::NEW});
+    m_adapter.addConntrackRule(MarkParam{SAMPLE_MARK}, ConntrackParam{ConntrackState::NEW});
 }
 
 TEST_F(MangleAdapterTest, ReadNflogRulesIsEmptyWithoutListingWhenTheChainIsMissing)

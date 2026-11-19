@@ -171,7 +171,7 @@ TEST_F(MangleKernelTest, ReadSkipsRulesThatAreNotNflog)
 {
     MangleAdapter adapter("bb_k_mixed");
     adapter.createChain();
-    adapter.addConntrackRule(MarkParam{SAMPLE_MARK}, ConntrackParam{ConntrackMatch::State::NEW});
+    adapter.addConntrackRule(MarkParam{SAMPLE_MARK}, ConntrackParam{ConntrackState::NEW});
     adapter.addNflogRule(MarkParam{SAMPLE_MARK}, fullNflog());
     adapter.commit();
 

@@ -5,23 +5,23 @@
 #include <linux/netfilter/nf_conntrack_common.h>
 #include <linux/netfilter/xt_conntrack.h>
 
-ConntrackMatch::ConntrackMatch(State state)
+ConntrackMatch::ConntrackMatch(ConntrackState state)
     : m_flags(resolve(state))
 {
 }
 
-ConntrackMatch::Flags ConntrackMatch::resolve(State state)
+ConntrackMatch::Flags ConntrackMatch::resolve(ConntrackState state)
 {
     switch (state)
     {
-        case State::NEW:
+        case ConntrackState::NEW:
             return {.matchFlags = XT_CONNTRACK_STATE | XT_CONNTRACK_DIRECTION,
                     .stateMask = NF_CT_STATE_BIT(IP_CT_NEW)};
-        case State::ESTABLISHED_RELATED:
+        case ConntrackState::ESTABLISHED_RELATED:
             return {
                 .matchFlags = XT_CONNTRACK_STATE,
                 .stateMask = NF_CT_STATE_BIT(IP_CT_ESTABLISHED) | NF_CT_STATE_BIT(IP_CT_RELATED)};
-        case State::INVALID:
+        case ConntrackState::INVALID:
             return {.matchFlags = XT_CONNTRACK_STATE, .stateMask = NF_CT_STATE_INVALID_BIT};
     }
     return {.matchFlags = XT_CONNTRACK_STATE, .stateMask = NF_CT_STATE_INVALID_BIT};
