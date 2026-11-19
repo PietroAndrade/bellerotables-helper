@@ -34,6 +34,15 @@ void HashlimitMatch::fillData(unsigned char* data) const
 {
     xt_hashlimit_mtinfo1 info{};
     std::strncpy(info.name, m_hashlimit.name.c_str(), sizeof(info.name) - 1);
+    /* LEARN: cfg is the hashlimit_cfg1 nested in the match payload: the rate limit itself, as
+       opposed to name, which only labels the hash table the kernel keeps for it. mode (a bitmask
+       of XT_HASHLIMIT_HASH_*) picks what an entry is keyed on: source address, destination
+       address, ports. avg is not a rate but the average time between packets times the kernel's
+       scale, and burst multiplies it into the upper limit. expire and gc_interval age idle
+       entries out, and srcmask and dstmask cut the addresses to a prefix before keying. size
+       (buckets) and max (entries) are not set: zero asks the kernel for its defaults. The hinfo
+       pointer after cfg is kernel-private and stays zero.
+    */
     info.cfg.mode = m_hashlimit.mode;
     info.cfg.avg = m_hashlimit.average;
     info.cfg.burst = m_hashlimit.burst;

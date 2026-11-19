@@ -44,6 +44,16 @@ IptEntryPtr RuleBuilder::build() const
     return entry;
 }
 
+/* TODO: the kernel requires the rule protocol (ipt_entry.ip.proto, "-p tcp") to match the
+   protocol a match is bound to: xt_check_match() rejects "-m tcp" / "-m udp" in a rule without it,
+   and since iptc_commit() sends the whole table, the error only surfaces at commit as EINVAL, far
+   from its cause. Today the first non-zero protocol() wins, so a rule holding both tcp and udp
+   matches silently takes the first one and the kernel rejects the other. Planned: stateless
+   mappers that each produce a RuleBody (protocol, matches, target), e.g. TcpMapper::toBody(ports)
+   yields protocol = IPPROTO_TCP plus the "tcp" match, and the builder merges the bodies and throws
+   on two different protocols, two targets or no target. Not needed until the redirection DNAT
+   (--dport) reaches this adapter.
+*/
 uint8_t RuleBuilder::resolveProtocol() const
 {
     for (const auto& match : matches_)
