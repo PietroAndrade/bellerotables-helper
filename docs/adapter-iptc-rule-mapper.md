@@ -39,9 +39,12 @@ Two related smells:
    current static helpers become its private implementation. The entry walk with bounds checks is
    written once, in `RuleMapper::fromEntry`.
 3. **`PayloadMapper` translates a kernel payload struct to and from `ExtensionParam.payload`** (option
-   V1b below): a template whose type parameter carries its identity (name, revision) through a trait.
+   V1b below): a template whose type parameter carries its identity (name, revision) through a trait,
+   constrained by the `KernelPayload` concept (trivially copyable, with an identity). Why a template, the
+   trait and the concept: [adapter-iptc-payload-mapper.md](adapter-iptc-payload-mapper.md).
 4. **Matches and targets become stateless mappers** (option B below): `MarkParam ⇄ ExtensionParam`, and
-   so on. The `TemplateMatch` / `ExtensionTargetTemplate` / `ITargetStrategy` hierarchy goes away.
+   so on. The `TemplateMatch` / `ExtensionTargetTemplate` / `ITargetStrategy` hierarchy goes away; why,
+   and the boundary before and after: [adapter-iptc-hierarchy-removal.md](adapter-iptc-hierarchy-removal.md).
 5. **DTOs never compose a mapper.** Data is on one side, translators on the other; only services
    (`IptcHelper`, the mappers, `MangleAdapter`) use mappers.
 6. **The enums move to `dtos/`.** `ConntrackMatch::State` and `StandardTarget::Verdict` become DTO
@@ -98,14 +101,21 @@ struct RuleParam
 template <typename Payload>
 struct PayloadIdentity;   // primary template left undefined: a struct without identity does not compile
 
+// trivially copyable (memcpy is valid) and with a PayloadIdentity giving NAME and REVISION
+template <typename Payload>
+concept KernelPayload = std::is_trivially_copyable_v<Payload> && requires {
+    { PayloadIdentity<Payload>::NAME } -> std::convertible_to<const char*>;
+    { PayloadIdentity<Payload>::REVISION } -> std::convertible_to<uint8_t>;
+};
+
 struct PayloadMapper
 {
 
-    template <typename Payload>
+    template <KernelPayload Payload>
     [[nodiscard]] static ExtensionParam toExtension(const Payload& payload);   // name, revision from the trait
 
     // nullopt when the extension is not this payload's name and revision, or its payload is too small.
-    template <typename Payload>
+    template <KernelPayload Payload>
     [[nodiscard]] static std::optional<Payload> fromExtension(const ExtensionParam& extension);
 };
 ```
