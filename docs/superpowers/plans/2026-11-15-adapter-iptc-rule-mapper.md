@@ -22,7 +22,9 @@ driven by the `Makefile`.
 - **Task 3 (`RuleMapper`):** done and committed. Full gate green (format-check, rebuild, tidy-check, test-unit 11/11,
   test-asan 11/11, test-valgrind 6/6). `matchBytes` is a free function in the anonymous namespace of
   `rule_mapper.cpp` (user's call, an exception to "no free functions"); `targetBytes` is inlined in `toEntry`.
-- **Task 4 onward:** Task 4 started 2026-11-26.
+- **Task 4 (per-extension mappers):** done and committed. Full gate green (format-check, rebuild, tidy-check, unit 11/11, asan 11/11, valgrind 6/6).
+  Rulings in the ledger; the one Task 5 must honour: `TcpMapper`/`UdpMapper` do not set `RuleParam.protocol`.
+- **Task 5 onward:** not started.
 - Deviations from Task 3 as written: `toEntry` also throws `std::length_error` past the 16-bit offsets
   (`RuleTooLargeForTheOffsetsThrows`); the parameterized fixtures are named `RuleMapperToEntryShape`,
   `RuleMapperMalformedMatches` and `RuleMapperMalformedTarget`; the test redefines the constants instead of
@@ -180,7 +182,7 @@ driven by the `Makefile`.
 - Identities, specialized in each `.cpp`: `xt_mark_mtinfo1` `"mark"`/1, `xt_tcp` `"tcp"`/0, `xt_udp` `"udp"`/0, `xt_conntrack_mtinfo3` `"conntrack"`/3, `xt_hashlimit_mtinfo1` `"hashlimit"`/1, `xt_nflog_info` `"NFLOG"`/0, `StandardVerdict` `""`/0.
 - Translations move verbatim from the old `fillData`/`read`: hashlimit `mode` 0 → `SIP|DIP|DPT`, `cfg` fields (keep the uncommitted `LEARN` on `cfg`); conntrack `resolve()`; `Verdict` → `-NF_ACCEPT-1`, `-NF_DROP-1`, `XT_RETURN`; NFLOG prefix cut on a UTF-8 boundary within 63 bytes, `range` → `len` + `XT_NFLOG_F_COPY_LEN`, threshold. `fromRule` rules: mark takes the first match that `fromExtension<xt_mark_mtinfo1>` decodes, then `nullopt` if `mask != 0xffffffff` or `invert != 0`; NFLOG reads prefix with `strnlen` over the field, `range` only with the flag, threshold `XT_NFLOG_DEFAULT_THRESHOLD` → unset. Helper methods that are free functions today (`prefixBytesThatFit`, `isUtf8Continuation`) become private static members of `NflogMapper`.
 
-- [ ] **Step 1: Write the failing tests.** Tests that need a payload the mappers never write (inverted mark, flags 0, a full 64-byte prefix) build the `ExtensionParam` by hand with a test-only `extensionOf(name, revision, const T&)` helper that `memcpy`s the struct. Port each case from the old files with its values:
+- [x] **Step 1: Write the failing tests.** Tests that need a payload the mappers never write (inverted mark, flags 0, a full 64-byte prefix) build the `ExtensionParam` by hand with a test-only `extensionOf(name, revision, const T&)` helper that `memcpy`s the struct. Port each case from the old files with its values:
   - `match_mapper_test.cpp`:
     - `MatchIdentityTest` (parameterized: name, revision, `payload.size()` for each of the five matches);
     - `MarkMapperTest.StoresMarkAndMask` (plain → mask `0xffffffff`; `MaskedMark{0x1234, 0xff00}`);
@@ -193,10 +195,10 @@ driven by the `Makefile`.
     - `NflogMapperTest` identity and `WritesEveryKnobIntoTheKernelInfo`;
     - `NflogPrefixTest.KeepsWholeCharactersWithinTheKernelBudget` (move the cases and helpers from `nflog_target_test.cpp`);
     - `NflogFromRuleTest` (the `NFLOG_DECODED_CASES`, plus rejected: target is a standard verdict, name `"NFQUEUE"`, no target, payload too small).
-- [ ] **Step 2: Run them to verify they fail.** `make configure-unit build-unit`. Expected: mapper headers not found.
-- [ ] **Step 3: Implement the seven mappers.** Each `.cpp` holds its `PayloadIdentity` specialization and the `LEARN` comments moved with its code.
-- [ ] **Step 4: Run them to verify they pass.** Gtest filters `Match`, `Mark`, `Port`, `Conntrack`, `Hashlimit`, `Verdict`, `Nflog`. Expected: all pass; `make test-unit` green, old tests included.
-- [ ] **Step 5: Commit** (checkpoint): `feat(adapter_iptc): stateless mappers per extension`
+- [x] **Step 2: Run them to verify they fail.** `make configure-unit build-unit`. Expected: mapper headers not found.
+- [x] **Step 3: Implement the seven mappers.** Each `.cpp` holds its `PayloadIdentity` specialization and the `LEARN` comments moved with its code.
+- [x] **Step 4: Run them to verify they pass.** Gtest filters `Match`, `Mark`, `Port`, `Conntrack`, `Hashlimit`, `Verdict`, `Nflog`. Expected: all pass; `make test-unit` green, old tests included.
+- [x] **Step 5: Commit** (checkpoint): `feat(adapter_iptc): stateless mappers per extension`
 
 ### Task 5: Switch the boundary to `RuleParam`
 
