@@ -47,7 +47,8 @@ public:
                                  uint8_t revision);
 
     // Writes a target header at `position`; `position` must have room for sizeof(xt_entry_target).
-    static void writeTargetHeader(unsigned char* position, std::size_t size, const char* name);
+    static void writeTargetHeader(unsigned char* position, std::size_t size, const char* name,
+                                  uint8_t revision);
 
     // Size of a standard target (header and verdict) with the padding the kernel requires.
     [[nodiscard]] static std::size_t standardTargetSize();

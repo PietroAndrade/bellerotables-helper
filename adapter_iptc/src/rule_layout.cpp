@@ -37,11 +37,13 @@ void RuleLayout::writeMatchHeader(unsigned char* position, std::size_t size, con
     store(position, header);
 }
 
-void RuleLayout::writeTargetHeader(unsigned char* position, std::size_t size, const char* name)
+void RuleLayout::writeTargetHeader(unsigned char* position, std::size_t size, const char* name,
+                                   uint8_t revision)
 {
     xt_entry_target header{};
     header.u.user.target_size = size;
     std::strncpy(header.u.user.name, name, sizeof(header.u.user.name) - 1);
+    header.u.user.revision = revision;
     store(position, header);
 }
 
@@ -70,7 +72,8 @@ ExtensionHeader RuleLayout::readMatchHeader(const unsigned char* position)
 ExtensionHeader RuleLayout::readTargetHeader(const unsigned char* position)
 {
     const auto header = load<xt_entry_target>(position);
-    ExtensionHeader result{.size = header.u.user.target_size, .revision = 0, .name = {}};
+    ExtensionHeader result{
+        .size = header.u.user.target_size, .revision = header.u.user.revision, .name = {}};
     std::copy_n(header.u.user.name, result.name.size(), result.name.begin());
     return result;
 }

@@ -16,6 +16,19 @@ driven by the `Makefile`.
 **Spec:** [docs/adapter-iptc-rule-mapper.md](../../adapter-iptc-rule-mapper.md). Read it first: the
 "Behaviour to keep" section is the acceptance list.
 
+## Where we stopped (2026-11-26)
+
+- **Tasks 1 and 2:** done, committed and pushed (358b2e2, 9647e7f on `feat/adapter-iptc`).
+- **Task 3 (`RuleMapper`):** done and committed. Full gate green (format-check, rebuild, tidy-check, test-unit 11/11,
+  test-asan 11/11, test-valgrind 6/6). `matchBytes` is a free function in the anonymous namespace of
+  `rule_mapper.cpp` (user's call, an exception to "no free functions"); `targetBytes` is inlined in `toEntry`.
+- **Task 4 onward:** Task 4 started 2026-11-26.
+- Deviations from Task 3 as written: `toEntry` also throws `std::length_error` past the 16-bit offsets
+  (`RuleTooLargeForTheOffsetsThrows`); the parameterized fixtures are named `RuleMapperToEntryShape`,
+  `RuleMapperMalformedMatches` and `RuleMapperMalformedTarget`; the test redefines the constants instead of
+  reusing `rule_builder_test.cpp`'s; the layout diagrams were copied, not moved; two extra tests
+  (`MatchPayloadFollowsItsHeader`, `ProtocolIsRead`).
+
 ## Global Constraints
 
 - House C++ rules: no free functions; headers only under `adapter_iptc/include/adapter_iptc/`; no calls
@@ -23,6 +36,9 @@ driven by the `Makefile`.
   constructors.
 - Mappers are `struct`s of static member functions only: no data members, no constructor, no interface.
   DTOs are `struct`s of data members only. Neither holds the other.
+- One call per statement, as in `~/.claude/skills/docs/cpp-conventions.md`: a call is only the whole
+  initializer of a declaration or a statement of its own; arguments, `return` and braced-initializer fields
+  hold names and literals. Applied to `rule_mapper.cpp` so far; apply it to every new mapper.
 - Every comment starts with a modifier (`BUG COMPLEX FIXME HACK LEARN OPTIMIZE REVIEW TODO`) and a colon.
   Moved code keeps its `LEARN` comments, rewritten where they name a class that no longer exists.
 - Project headers are included with quotes (`make include-check`). Column limit 100 (`make format-check`).
@@ -102,17 +118,17 @@ driven by the `Makefile`.
   - `struct PayloadMapper { template <KernelPayload Payload> [[nodiscard]] static ExtensionParam toExtension(const Payload& payload); template <KernelPayload Payload> [[nodiscard]] static std::optional<Payload> fromExtension(const ExtensionParam& extension); };`
   - Both constrained by `KernelPayload`, no `static_assert`. `toExtension` copies `sizeof(Payload)` bytes. `fromExtension` returns `nullopt` unless `name == NAME`, `revision == REVISION` and `payload.size() >= sizeof(Payload)`, then copies the first `sizeof(Payload)` bytes with `std::memcpy`.
 
-- [ ] **Step 1: Write the failing tests** with a test-only payload `struct TestPayload { uint32_t first; uint16_t second; };` and its `PayloadIdentity` specialization (`"test"`, revision 2) in the test file:
+- [x] **Step 1: Write the failing tests** with a test-only payload `struct TestPayload { uint32_t first; uint16_t second; };` and its `PayloadIdentity` specialization (`"test"`, revision 2) in the test file:
   - `PayloadMapperTest.ToExtensionTakesNameAndRevisionFromTheIdentity`: `name == "test"`, `revision == 2`, `payload.size() == sizeof(TestPayload)`.
   - `PayloadMapperTest.RoundTripsThePayload`: `fromExtension<TestPayload>(toExtension(TestPayload{0x11223344, 0x5566}))` has `first == 0x11223344`, `second == 0x5566`.
   - `PayloadMapperTest.OtherNameIsNotDecoded`, `PayloadMapperTest.OtherRevisionIsNotDecoded`: edit `name` to `"other"` / `revision` to 3 → `nullopt`.
   - `PayloadMapperTest.ShortPayloadIsNotDecoded`: `payload.resize(sizeof(TestPayload) - 1)` → `nullopt`.
   - `PayloadMapperTest.LongerPayloadStillDecodes`: `payload.resize(sizeof(TestPayload) + 4, 0)` → decodes the original values (Review Focus 2).
   - `PayloadMapperTest.ConceptAcceptsOnlyMappableTypes`: `static_assert(KernelPayload<TestPayload>)`, `static_assert(!KernelPayload<NoIdentity>)` (a trivially copyable struct with no specialization) and `static_assert(!KernelPayload<std::string>)`, written after the `TestPayload` specialization.
-- [ ] **Step 2: Run them to verify they fail.** `make configure-unit build-unit`. Expected: `mappers/payload_mapper.h` not found.
-- [ ] **Step 3: Implement `payload_mapper.h`.** Short `LEARN` comments that point to the payload doc: on `PayloadIdentity` (left undefined; specializations live in the `.cpp` of the mapper that owns the struct), on `KernelPayload` (a specialization must be visible before the concept is first checked for its type), on the padding read back and on copying instead of `reinterpret_cast`.
-- [ ] **Step 4: Run them to verify they pass.** Gtest filter `PayloadMapperTest`. Expected: 7 passed.
-- [ ] **Step 5: Commit** (checkpoint): `feat(adapter_iptc): PayloadMapper with a payload identity trait`
+- [x] **Step 2: Run them to verify they fail.** `make configure-unit build-unit`. Expected: `mappers/payload_mapper.h` not found.
+- [x] **Step 3: Implement `payload_mapper.h`.** Short `LEARN` comments that point to the payload doc: on `PayloadIdentity` (left undefined; specializations live in the `.cpp` of the mapper that owns the struct), on `KernelPayload` (a specialization must be visible before the concept is first checked for its type), on the padding read back and on copying instead of `reinterpret_cast`.
+- [x] **Step 4: Run them to verify they pass.** Gtest filter `PayloadMapperTest`. Expected: 7 passed.
+- [x] **Step 5: Commit** (checkpoint): `feat(adapter_iptc): PayloadMapper with a payload identity trait`
 
 ### Task 3: `RuleMapper`
 
@@ -126,7 +142,7 @@ driven by the `Makefile`.
   - `toEntry`: throws `std::invalid_argument` when `!rule.target`. Each extension takes `XT_ALIGN(sizeof header + payload.size())` bytes. Match headers carry name, revision and `match_size`; the target header carries name, revision and `target_size`; the payload follows each header; `target_offset = sizeof(ipt_entry) + Σ matches`, `next_offset = target_offset + target`, `ip.proto = rule.protocol`. Names are cut to `XT_EXTENSION_MAXNAMELEN - 1` bytes.
   - `fromEntry`: the walk and the bounds checks of `MarkMatch::dataOf` (matches) and `NflogTarget::dataOf` (target), kept separate, so a failure in one never empties the other. A match is copied while its header fits before `target_offset`, its size is at least its header and it ends at or before `target_offset`; the first that fails ends `matches`. The matches area is empty when `target_offset < sizeof(ipt_entry)` or `target_offset > next_offset`. The target is set when `target_offset >= sizeof(ipt_entry)`, its header fits before `next_offset`, `target_size >= sizeof(xt_entry_target)` and it ends at or before `next_offset`. `name` is the field up to its first NUL, at most `XT_EXTENSION_MAXNAMELEN` bytes. `payload` is `size − header` bytes. `revision` comes from each header, target included. `protocol = entry.ip.proto`.
 
-- [ ] **Step 1: Write the failing tests.** Build rules as `RuleParam` literals; the expected values come from `rule_builder_test.cpp`'s constants (`MARK_MATCH_BYTES`, `STANDARD_TARGET_BYTES`, …), which this file reuses. A standard target here is `ExtensionParam{"", 0, <4 bytes of ACCEPT_VERDICT>}`.
+- [x] **Step 1: Write the failing tests.** Build rules as `RuleParam` literals; the expected values come from `rule_builder_test.cpp`'s constants (`MARK_MATCH_BYTES`, `STANDARD_TARGET_BYTES`, …), which this file reuses. A standard target here is `ExtensionParam{"", 0, <4 bytes of ACCEPT_VERDICT>}`.
   - `RuleMapperToEntry.TargetOffsetCoversHeaderAndEveryMatch`, `RuleMapperToEntry.NextOffsetIsTargetOffsetPlusTargetSize`: parameterized over the `RULE_LAYOUT_CASES` shapes (mark only; mark+tcp; tcp+udp; none), with payload sizes `sizeof(xt_mark_mtinfo1)`, `sizeof(xt_tcp)`, `sizeof(xt_udp)`.
   - `RuleMapperToEntry.MatchHeadersLandInInsertionOrder`: name, revision and `match_size` of each match at its offset.
   - `RuleMapperToEntry.StandardTargetVerdictLandsAtTargetOffset`: `target_size == XT_ALIGN(sizeof(xt_standard_target))`, `verdict == ACCEPT_VERDICT`, empty name.
@@ -141,10 +157,10 @@ driven by the `Makefile`.
   - `RuleMapperFromEntry.BrokenMatchStillLeavesTheTarget`: mark + NFLOG, `match_size = 0` → `matches.empty()`, `target->name == "NFLOG"` (Review Focus 3).
   - `RuleMapperFromEntry.NameWithoutTerminatorIsBounded`: match name filled with 29 `'m'` → `name == std::string(29, 'm')` (Review Focus 1).
   - `RuleMapperFromEntry.TargetRevisionIsRead`: target written with revision 3 reads back 3.
-- [ ] **Step 2: Run them to verify they fail.** `make configure-unit build-unit`. Expected: `mappers/rule_mapper.h` not found.
-- [ ] **Step 3: Implement `RuleMapper`** with `RuleLayout`'s helpers (`allocateEntry`, `writeMatchHeader`, `writeTargetHeader`, `readMatchHeader`, `readTargetHeader`, `matchPayload`, `targetPayload`, `bytesOf`). Add a revision parameter to `writeTargetHeader`, and make `readTargetHeader` report `u.user.revision`. Move the two layout diagrams (`LEARN`) from `mark_match.cpp` and `nflog_target.cpp` to `fromEntry`; in Task 6 they become the only copies.
-- [ ] **Step 4: Run them to verify they pass.** Gtest filter `RuleMapper`. Expected: all pass; the whole `make test-unit` stays green.
-- [ ] **Step 5: Commit** (checkpoint): `feat(adapter_iptc): RuleMapper between RuleParam and ipt_entry`
+- [x] **Step 2: Run them to verify they fail.** `make configure-unit build-unit`. Expected: `mappers/rule_mapper.h` not found.
+- [x] **Step 3: Implement `RuleMapper`** with `RuleLayout`'s helpers (`allocateEntry`, `writeMatchHeader`, `writeTargetHeader`, `readMatchHeader`, `readTargetHeader`, `matchPayload`, `targetPayload`, `bytesOf`). Add a revision parameter to `writeTargetHeader`, and make `readTargetHeader` report `u.user.revision`. Move the two layout diagrams (`LEARN`) from `mark_match.cpp` and `nflog_target.cpp` to `fromEntry`; in Task 6 they become the only copies.
+- [x] **Step 4: Run them to verify they pass.** Gtest filter `RuleMapper`. Expected: all pass; the whole `make test-unit` stays green.
+- [x] **Step 5: Commit** (checkpoint): `feat(adapter_iptc): RuleMapper between RuleParam and ipt_entry`
 
 ### Task 4: Per-extension mappers
 

@@ -12,6 +12,6 @@ std::size_t ExtensionTargetTemplate::size() const
 
 void ExtensionTargetTemplate::write(unsigned char* ptr) const
 {
-    RuleLayout::writeTargetHeader(ptr, size(), name());
+    RuleLayout::writeTargetHeader(ptr, size(), name(), 0);
     fillData(RuleLayout::targetPayload(ptr));
 }
