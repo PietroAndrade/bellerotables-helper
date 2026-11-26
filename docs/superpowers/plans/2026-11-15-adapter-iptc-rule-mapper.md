@@ -24,7 +24,11 @@ driven by the `Makefile`.
   `rule_mapper.cpp` (user's call, an exception to "no free functions"); `targetBytes` is inlined in `toEntry`.
 - **Task 4 (per-extension mappers):** done and committed. Full gate green (format-check, rebuild, tidy-check, unit 11/11, asan 11/11, valgrind 6/6).
   Rulings in the ledger; the one Task 5 must honour: `TcpMapper`/`UdpMapper` do not set `RuleParam.protocol`.
-- **Task 5 onward:** not started.
+- **Task 5 (`RuleParam` boundary):** done and committed; full gate green (unit 11/11, asan 11/11, valgrind 6/6)
+  but the kernel tier **skipped all 15 tests** (the host has no `ip_tables`/`iptable_mangle` module): run it
+  after `sudo modprobe ip_tables iptable_mangle` before trusting `appendRule`/`listRules` against the kernel.
+  `LegacyRuleBuilder` (test/legacy_rule_builder.h) keeps the old-class tests building until Task 6.
+- **Task 6 onward:** not started.
 - Deviations from Task 3 as written: `toEntry` also throws `std::length_error` past the 16-bit offsets
   (`RuleTooLargeForTheOffsetsThrows`); the parameterized fixtures are named `RuleMapperToEntryShape`,
   `RuleMapperMalformedMatches` and `RuleMapperMalformedTarget`; the test redefines the constants instead of
@@ -217,19 +221,19 @@ driven by the `Makefile`.
   - `MockIptcHelper`: `MOCK_METHOD1(appendRule, void(const RuleParam& rule)); MOCK_METHOD0(listRules, std::vector<RuleParam>());`.
   - `MangleAdapter`: conntrack rule = `addMatch(MarkMapper::toExtension(mark))`, `addMatch(ConntrackMapper::toExtension(conntrack.state))`, `setTarget(VerdictMapper::toExtension(Verdict::ACCEPT))`. NFLOG rule = mark match + `NflogMapper::toExtension(nflog)`. `readNflogRules` uses `NflogMapper::fromRule` and `MarkMapper::fromRule`.
 
-- [ ] **Step 1: Rewrite the builder tests** in `rule_builder_test.cpp`:
+- [x] **Step 1: Rewrite the builder tests** in `rule_builder_test.cpp`:
   - `RuleBuilderTest.MatchesKeepInsertionOrder`;
   - `RuleBuilderTest.TargetIsTheOneSet` (the last `setTarget` wins);
   - `RuleBuilderTest.ProtocolIsTheOneSet` (default 0; `setProtocol(IPPROTO_TCP)` → 6);
   - `RuleBuilderTest.BuildWithoutTargetThrows` (Review Focus 4).
 
   The offset and layout tests already live in `rule_mapper_test.cpp` (Task 3); delete them here.
-- [ ] **Step 2: Migrate `mangle_adapter_test.cpp`.** Expectations capture the `RuleParam` given to `appendRule` and compare it with one built from the mappers (`AddConntrackRule…` expects matches `[mark, conntrack NEW]` and the ACCEPT verdict target). `WhatAddNflogRuleAppendsReadsBackUnchanged` stores the captured `RuleParam`s and returns them from `listRules`. The `MangleAdapterReadNflogTest` cases build `RuleParam`s with the mappers. `firstMatch`, `targetOf` and `copyOf` go away.
-- [ ] **Step 3: Migrate `mangle_kernel_test.cpp`.** `appendEntry`/`listEntries` → `appendRule`/`listRules`; `UnknownTarget` → `ExtensionParam{.name = "BBNOSUCHTARGET", .revision = 0, .payload = std::vector<unsigned char>(4, 0)}`; `NflogRuleWithoutMarkReadsBackWithoutMark` builds with `RuleBuilder().setTarget(NflogMapper::toExtension(fullNflog())).build()`.
-- [ ] **Step 4: Run to verify the build fails** (the tests use the new API). `make build-unit`. Expected: errors on `appendRule`/`addMatch`.
-- [ ] **Step 5: Switch `RuleBuilder`, `IIptcHelper`, `IptcHelper`, `MockIptcHelper`, `MangleAdapter`** to the interfaces above. Update the `LEARN` in `ipt_entry_ptr.h`: the owners are now `RuleMapper::toEntry()` and the copies `IptcHelper` makes internally, no longer `RuleBuilder::build()`/`listEntries()`.
-- [ ] **Step 6: Run the unit and kernel tiers.** `make rebuild-unit && make test-unit`. Expected: green, kernel tests included (`ReadSkipsRulesThatAreNotNflog`, `KernelRejectionThrowsWithErrnoAndChangesNothing`, `NflogRuleWithoutMarkReadsBackWithoutMark` are the ones that exercise the new path against the kernel). A skipped kernel tier (no namespace) is not a pass for this task; say so and run it where it can execute.
-- [ ] **Step 7: Commit** (checkpoint): `refactor(adapter_iptc): IIptcHelper and RuleBuilder speak RuleParam`
+- [x] **Step 2: Migrate `mangle_adapter_test.cpp`.** Expectations capture the `RuleParam` given to `appendRule` and compare it with one built from the mappers (`AddConntrackRule…` expects matches `[mark, conntrack NEW]` and the ACCEPT verdict target). `WhatAddNflogRuleAppendsReadsBackUnchanged` stores the captured `RuleParam`s and returns them from `listRules`. The `MangleAdapterReadNflogTest` cases build `RuleParam`s with the mappers. `firstMatch`, `targetOf` and `copyOf` go away.
+- [x] **Step 3: Migrate `mangle_kernel_test.cpp`.** `appendEntry`/`listEntries` → `appendRule`/`listRules`; `UnknownTarget` → `ExtensionParam{.name = "BBNOSUCHTARGET", .revision = 0, .payload = std::vector<unsigned char>(4, 0)}`; `NflogRuleWithoutMarkReadsBackWithoutMark` builds with `RuleBuilder().setTarget(NflogMapper::toExtension(fullNflog())).build()`.
+- [x] **Step 4: Run to verify the build fails** (the tests use the new API). `make build-unit`. Expected: errors on `appendRule`/`addMatch`.
+- [x] **Step 5: Switch `RuleBuilder`, `IIptcHelper`, `IptcHelper`, `MockIptcHelper`, `MangleAdapter`** to the interfaces above. Update the `LEARN` in `ipt_entry_ptr.h`: the owners are now `RuleMapper::toEntry()` and the copies `IptcHelper` makes internally, no longer `RuleBuilder::build()`/`listEntries()`.
+- [x] **Step 6: Run the unit and kernel tiers.** `make rebuild-unit && make test-unit`. Expected: green, kernel tests included (`ReadSkipsRulesThatAreNotNflog`, `KernelRejectionThrowsWithErrnoAndChangesNothing`, `NflogRuleWithoutMarkReadsBackWithoutMark` are the ones that exercise the new path against the kernel). A skipped kernel tier (no namespace) is not a pass for this task; say so and run it where it can execute.
+- [x] **Step 7: Commit** (checkpoint): `refactor(adapter_iptc): IIptcHelper and RuleBuilder speak RuleParam`
 
 ### Task 6: Delete the old hierarchy, fold `RuleLayout` into `RuleMapper`
 

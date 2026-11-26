@@ -1,11 +1,11 @@
 #include "adapter_iptc/targets/nflog_target.h"
 
-#include "adapter_iptc/builder/rule_builder.h"
 #include "adapter_iptc/dtos/nflog.h"
 #include "adapter_iptc/exceptions/iptc_exception.h"
 #include "adapter_iptc/ipt_entry_ptr.h"
 #include "adapter_iptc/matchs/mark_match.h"
 #include "adapter_iptc/targets/standard_target.h"
+#include "legacy_rule_builder.h"
 #include "parameterized_case.h"
 
 #include <cerrno>
@@ -87,7 +87,7 @@ const xt_nflog_info* infoOf(const std::vector<unsigned char>& buffer)
 
 IptEntryPtr entryWith(const NflogParam& nflog)
 {
-    return RuleBuilder()
+    return LegacyRuleBuilder()
         .setMatch(std::make_shared<MarkMatch>(SAMPLE_MARK))
         .setTarget(std::make_shared<NflogTarget>(nflog))
         .build();
@@ -228,7 +228,7 @@ TEST(NflogTargetTest, GroupAndPrefixConstructorMatchesTheParamConstructor)
 }
 
 /* LEARN: one rule buffer and what NflogTarget::read() must make of it. makeEntry builds the rule,
-   and may then edit its bytes to play a kernel value RuleBuilder never writes. expected is
+   and may then edit its bytes to play a kernel value LegacyRuleBuilder never writes. expected is
    nullopt when the rule must not be decoded as NFLOG at all.
 */
 struct NflogReadCase
@@ -261,7 +261,9 @@ const std::vector<NflogReadCase> NFLOG_DECODED_CASES{
 
 const std::vector<NflogReadCase> NFLOG_REJECTED_CASES{
     {[]() {
-         return RuleBuilder().setTarget(std::make_shared<StandardTarget>(Verdict::ACCEPT)).build();
+         return LegacyRuleBuilder()
+             .setTarget(std::make_shared<StandardTarget>(Verdict::ACCEPT))
+             .build();
      },
      std::nullopt, "StandardTargetIsNotNflog"},
     {[]() {

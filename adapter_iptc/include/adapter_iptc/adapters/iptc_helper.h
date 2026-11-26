@@ -26,10 +26,10 @@ public:
 
     void createChain() override;
     void flushEntries() override;
-    void appendEntry(const ipt_entry* entry) override;
+    void appendRule(const RuleParam& rule) override;
     void commit() override;
     bool chainExists() override;
-    std::vector<IptEntryPtr> listEntries() override;
+    std::vector<RuleParam> listRules() override;
 
 private:
     void ensureOpen();

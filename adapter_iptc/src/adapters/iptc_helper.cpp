@@ -1,12 +1,11 @@
 #include "adapter_iptc/adapters/iptc_helper.h"
 
+#include "adapter_iptc/dtos/rule.h"
 #include "adapter_iptc/exceptions/iptc_exception.h"
 #include "adapter_iptc/ipt_entry_ptr.h"
-#include "adapter_iptc/rule_layout.h"
+#include "adapter_iptc/mappers/rule_mapper.h"
 
 #include <cerrno>
-#include <cstdlib>
-#include <cstring>
 #include <libiptc/libiptc.h>
 #include <new>
 #include <string>
@@ -22,13 +21,6 @@ namespace {
 {
     const int errorNumber = errno;
     throw IptcException(call + ": " + iptc_strerror(errorNumber), errorNumber);
-}
-
-IptEntryPtr copyOf(const ipt_entry& entry)
-{
-    IptEntryPtr copy = RuleLayout::allocateEntry(entry.next_offset);
-    std::memcpy(copy.get(), &entry, entry.next_offset);
-    return copy;
 }
 
 } // namespace
@@ -83,10 +75,15 @@ void IptcHelper::flushEntries()
     }
 }
 
-void IptcHelper::appendEntry(const ipt_entry* entry)
+/* LEARN: the rule buffer is built first, so a rule RuleMapper rejects (no target, past the 16-bit
+   offsets) throws before the handle is touched. libiptc copies the buffer on append, which is why
+   it can go out of scope when the call returns.
+*/
+void IptcHelper::appendRule(const RuleParam& rule)
 {
+    const IptEntryPtr entry = RuleMapper::toEntry(rule);
     ensureOpen();
-    if (iptc_append_entry(m_chain.c_str(), entry, m_handle) == 0)
+    if (iptc_append_entry(m_chain.c_str(), entry.get(), m_handle) == 0)
     {
         throwLastError("iptc_append_entry(" + m_chain + ")");
     }
@@ -116,18 +113,19 @@ bool IptcHelper::chainExists()
     return iptc_is_chain(m_chain.c_str(), m_handle) != 0;
 }
 
-std::vector<IptEntryPtr> IptcHelper::listEntries()
+std::vector<RuleParam> IptcHelper::listRules()
 {
     if (!chainExists())
     {
         throw IptcException("iptc_is_chain(" + m_chain + "): chain does not exist", ENOENT);
     }
 
-    std::vector<IptEntryPtr> entries;
+    std::vector<RuleParam> rules;
     for (const ipt_entry* entry = iptc_first_rule(m_chain.c_str(), m_handle); entry != nullptr;
          entry = iptc_next_rule(entry, m_handle))
     {
-        entries.push_back(copyOf(*entry));
+        RuleParam rule = RuleMapper::fromEntry(*entry);
+        rules.push_back(std::move(rule));
     }
-    return entries;
+    return rules;
 }

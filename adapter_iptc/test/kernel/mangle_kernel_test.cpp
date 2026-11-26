@@ -4,18 +4,15 @@
 #include "adapter_iptc/dtos/conntrack.h"
 #include "adapter_iptc/dtos/mark.h"
 #include "adapter_iptc/dtos/nflog.h"
+#include "adapter_iptc/dtos/rule.h"
 #include "adapter_iptc/exceptions/iptc_exception.h"
-#include "adapter_iptc/ipt_entry_ptr.h"
-#include "adapter_iptc/matchs/conntrack_match.h"
-#include "adapter_iptc/targets/extension_target_template.h"
-#include "adapter_iptc/targets/nflog_target.h"
+#include "adapter_iptc/mappers/nflog_mapper.h"
 #include "network_namespace.h"
 #include "parameterized_case.h"
 
 #include <cstddef>
 #include <cstdint>
 #include <gtest/gtest.h>
-#include <memory>
 #include <optional>
 #include <string>
 #include <utility>
@@ -98,30 +95,21 @@ std::vector<NflogRuleParam> readFromKernel(const std::string& chain)
     return reader.readNflogRules();
 }
 
-class UnknownTarget final : public ExtensionTargetTemplate
-{
-protected:
-    const char* name() const override
-    {
-        return "BBNOSUCHTARGET";
-    }
-
-    std::size_t dataSize() const override
-    {
-        return sizeof(uint32_t);
-    }
-
-    void fillData(unsigned char* /*data*/) const override {}
-};
-
 /* LEARN: queues a rule whose target does not exist: libiptc accepts it, the kernel rejects the
    whole table at commit.
 */
 void appendUnknownTarget(IptcHelper& helper)
 {
     helper.createChain();
-    const IptEntryPtr entry = RuleBuilder().setTarget(std::make_shared<UnknownTarget>()).build();
-    helper.appendEntry(entry.get());
+    const ExtensionParam unknown{
+        .name = "BBNOSUCHTARGET",
+        .revision = 0,
+        .payload = std::vector<unsigned char>(sizeof(uint32_t), 0),
+    };
+    RuleBuilder builder;
+    builder.setTarget(unknown);
+    const RuleParam rule = builder.build();
+    helper.appendRule(rule);
 }
 
 class MangleKernelTest : public ::testing::Test
@@ -176,7 +164,7 @@ TEST_F(MangleKernelTest, ReadSkipsRulesThatAreNotNflog)
     adapter.commit();
 
     IptcHelper helper(MANGLE_TABLE, "bb_k_mixed");
-    EXPECT_EQ(helper.listEntries().size(), 2U);
+    EXPECT_EQ(helper.listRules().size(), 2U);
     EXPECT_EQ(readFromKernel("bb_k_mixed"), std::vector<NflogRuleParam>{marked(fullNflog())});
 }
 
@@ -184,8 +172,10 @@ TEST_F(MangleKernelTest, NflogRuleWithoutMarkReadsBackWithoutMark)
 {
     IptcHelper helper(MANGLE_TABLE, "bb_k_unmarked");
     helper.createChain();
-    const auto entry = RuleBuilder().setTarget(std::make_shared<NflogTarget>(fullNflog())).build();
-    helper.appendEntry(entry.get());
+    RuleBuilder builder;
+    builder.setTarget(NflogMapper::toExtension(fullNflog()));
+    const RuleParam rule = builder.build();
+    helper.appendRule(rule);
     helper.commit();
 
     EXPECT_EQ(readFromKernel("bb_k_unmarked"),
@@ -236,7 +226,7 @@ TEST_F(MangleKernelTest, ListingAMissingChainThrowsEnoent)
 
     try
     {
-        static_cast<void>(helper.listEntries());
+        static_cast<void>(helper.listRules());
         FAIL() << "listed a chain that does not exist";
     }
     catch (const IptcException& missing)
@@ -313,7 +303,7 @@ TEST_P(MangleKernelApplyTest, KernelHoldsExactlyTheLastAppliedState)
     EXPECT_EQ(readFromKernel(chain), GetParam().expected);
     IptcHelper helper(MANGLE_TABLE, chain);
     EXPECT_TRUE(helper.chainExists());
-    EXPECT_EQ(helper.listEntries().size(), GetParam().expected.size());
+    EXPECT_EQ(helper.listRules().size(), GetParam().expected.size());
 }
 
 INSTANTIATE_TEST_SUITE_P(MangleKernel, MangleKernelApplyTest, ::testing::ValuesIn(APPLY_CASES),

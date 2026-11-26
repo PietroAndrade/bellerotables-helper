@@ -1,4 +1,3 @@
-#include "adapter_iptc/builder/rule_builder.h"
 #include "adapter_iptc/dtos/mark.h"
 #include "adapter_iptc/ipt_entry_ptr.h"
 #include "adapter_iptc/matchs/conntrack_match.h"
@@ -7,6 +6,7 @@
 #include "adapter_iptc/matchs/tcp_match.h"
 #include "adapter_iptc/matchs/udp_match.h"
 #include "adapter_iptc/targets/standard_target.h"
+#include "legacy_rule_builder.h"
 #include "parameterized_case.h"
 
 #include <cstddef>
@@ -107,7 +107,7 @@ PortBounds udpPortsOf(const unsigned char* data)
 
 IptEntryPtr acceptEntryWith(const std::vector<std::shared_ptr<TemplateMatch>>& matches)
 {
-    RuleBuilder builder;
+    LegacyRuleBuilder builder;
     for (const std::shared_ptr<TemplateMatch>& match : matches)
     {
         builder.setMatch(match);
@@ -335,7 +335,7 @@ TEST(HashlimitMatchTest, ExplicitModeIsWrittenVerbatim)
 }
 
 /* LEARN: one rule buffer and what MarkMatch::read() must make of it. makeEntry builds the rule,
-   and may then edit its bytes to play a kernel value RuleBuilder never writes. expected is
+   and may then edit its bytes to play a kernel value LegacyRuleBuilder never writes. expected is
    nullopt when the rule has no plain mark match, or its match headers cannot be trusted.
 */
 struct MarkReadCase

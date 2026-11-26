@@ -8,8 +8,8 @@ struct ipt_entry;
 
 /* LEARN: an ipt_entry is a variable-length buffer (header, matches, target), so it is allocated
    with calloc and owned with std::free as its deleter. Whoever holds an IptEntryPtr owns the rule
-   buffer: RuleBuilder::build() hands a new rule over, IIptcHelper::listEntries() copies of the
-   rules read back.
+   buffer: RuleMapper::toEntry() hands a new rule over, and IptcHelper::appendRule() holds it until
+   libiptc has copied it.
 */
 using IptEntryPtr = std::unique_ptr<ipt_entry, decltype(&std::free)>;
 

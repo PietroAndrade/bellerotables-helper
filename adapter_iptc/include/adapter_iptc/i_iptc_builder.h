@@ -1,15 +1,13 @@
 #ifndef I_IPTC_BUILDER_H
 #define I_IPTC_BUILDER_H
 
-#include "adapter_iptc/ipt_entry_ptr.h"
-
-struct ipt_entry;
+#include "adapter_iptc/dtos/rule.h"
 
 class IBuilder
 {
 public:
     virtual ~IBuilder() = default;
-    [[nodiscard]] virtual IptEntryPtr build() const = 0;
+    [[nodiscard]] virtual RuleParam build() const = 0;
 };
 
 #endif

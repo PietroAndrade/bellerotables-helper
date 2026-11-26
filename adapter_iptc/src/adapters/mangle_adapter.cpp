@@ -1,10 +1,12 @@
 #include "adapter_iptc/adapters/mangle_adapter.h"
 
 #include "adapter_iptc/builder/rule_builder.h"
-#include "adapter_iptc/matchs/conntrack_match.h"
-#include "adapter_iptc/matchs/mark_match.h"
-#include "adapter_iptc/targets/nflog_target.h"
-#include "adapter_iptc/targets/standard_target.h"
+#include "adapter_iptc/dtos/rule.h"
+#include "adapter_iptc/dtos/verdict.h"
+#include "adapter_iptc/mappers/conntrack_mapper.h"
+#include "adapter_iptc/mappers/mark_mapper.h"
+#include "adapter_iptc/mappers/nflog_mapper.h"
+#include "adapter_iptc/mappers/verdict_mapper.h"
 
 #include <memory>
 #include <optional>
@@ -34,24 +36,30 @@ void MangleAdapter::flush()
 
 void MangleAdapter::addConntrackRule(MarkParam mark, ConntrackParam conntrack)
 {
-    auto markMatch = std::make_shared<MarkMatch>(mark.mark);
-    auto conntrackMatch = std::make_shared<ConntrackMatch>(conntrack.state);
-    auto acceptTarget = std::make_shared<StandardTarget>(Verdict::ACCEPT);
+    const ExtensionParam markMatch = MarkMapper::toExtension(mark);
+    const ExtensionParam conntrackMatch = ConntrackMapper::toExtension(conntrack.state);
+    const ExtensionParam acceptTarget = VerdictMapper::toExtension(Verdict::ACCEPT);
 
-    auto entry =
-        RuleBuilder().setMatch(markMatch).setMatch(conntrackMatch).setTarget(acceptTarget).build();
+    RuleBuilder builder;
+    builder.addMatch(markMatch);
+    builder.addMatch(conntrackMatch);
+    builder.setTarget(acceptTarget);
+    const RuleParam rule = builder.build();
 
-    m_helper->appendEntry(entry.get());
+    m_helper->appendRule(rule);
 }
 
 void MangleAdapter::addNflogRule(MarkParam mark, NflogParam nflog)
 {
-    auto markMatch = std::make_shared<MarkMatch>(mark.mark);
-    auto nflogTarget = std::make_shared<NflogTarget>(std::move(nflog));
+    const ExtensionParam markMatch = MarkMapper::toExtension(mark);
+    const ExtensionParam nflogTarget = NflogMapper::toExtension(nflog);
 
-    auto entry = RuleBuilder().setMatch(markMatch).setTarget(nflogTarget).build();
+    RuleBuilder builder;
+    builder.addMatch(markMatch);
+    builder.setTarget(nflogTarget);
+    const RuleParam rule = builder.build();
 
-    m_helper->appendEntry(entry.get());
+    m_helper->appendRule(rule);
 }
 
 void MangleAdapter::setHelper(std::shared_ptr<IIptcHelper> helper)
@@ -71,14 +79,19 @@ std::vector<NflogRuleParam> MangleAdapter::readNflogRules()
     {
         return rules;
     }
-    for (const IptEntryPtr& entry : m_helper->listEntries())
+
+    const std::vector<RuleParam> listed = m_helper->listRules();
+    for (const RuleParam& rule : listed)
     {
-        std::optional<NflogParam> nflog = NflogTarget::read(*entry);
-        if (nflog.has_value())
+        std::optional<NflogParam> nflog = NflogMapper::fromRule(rule);
+        const bool isNflog = nflog.has_value();
+        if (!isNflog)
         {
-            rules.push_back(
-                NflogRuleParam{.mark = MarkMatch::read(*entry), .nflog = std::move(*nflog)});
+            continue;
         }
+
+        std::optional<MarkParam> mark = MarkMapper::fromRule(rule);
+        rules.push_back(NflogRuleParam{.mark = mark, .nflog = std::move(*nflog)});
     }
     return rules;
 }
