@@ -28,10 +28,50 @@ driven by the `Makefile`.
   but the kernel tier **skipped all 15 tests** (the host has no `ip_tables`/`iptable_mangle` module): run it
   after `sudo modprobe ip_tables iptable_mangle` before trusting `appendRule`/`listRules` against the kernel.
   `LegacyRuleBuilder` (test/legacy_rule_builder.h) keeps the old-class tests building until Task 6.
-- **Task 6 (delete the hierarchy):** steps 1 to 5 done, **step 6 (commit) still open**; in the tree, uncommitted.
-  Full gate green; `adapter_iptc_tests` 181 → 109. Not re-homed: `DeclaresItsProtocol` (5 cases; the protocol is
-  now `RuleBuilder::setProtocol`, covered by `ProtocolIsTheOneSet`) and the `NflogTarget(group, prefix)`
-  constructor test (the constructor is gone).
+- **Task 6 (delete the hierarchy):** done and committed (`41e7dd6` after the rebase, `84ed0a7` before it).
+  `adapter_iptc_tests` 181 → 121. Not re-homed: `DeclaresItsProtocol` (5 cases; the protocol is now
+  `RuleBuilder::setProtocol`, covered by `ProtocolIsTheOneSet`) and the `NflogTarget(group, prefix)`
+  constructor test (the constructor is gone). Refined in review, same commit: `ExtensionHeader<Header>`
+  ([adapter-iptc-extension-header.md](../../adapter-iptc-extension-header.md)) replaced the four header
+  functions and the `NOLINT` for the union; the rule buffer is `std::vector<ipt_entry>` (`IptEntryBuffer`,
+  `ipt_entry_buffer.h`) instead of `calloc` + `std::free`.
+- **Rebase onto `develop` (2026-11-26):** done, no conflicts; 39 commits on top of `origin/develop`
+  (`2b405db`). Full gate green after it (format-check, release, tidy-check, unit 11/11, ASan 11/11,
+  Valgrind 6/6). **Not pushed:** the branch history was rewritten, so the remote `feat/adapter-iptc` is
+  behind and needs `git push --force-with-lease`, which waits for the user's go-ahead.
+- The final whole-branch review of the skill was replaced by the user's own review.
+
+## Next session: where to pick up
+
+Order (backlog E2, `docs/plan/backlog.md`):
+
+1. **Push the rebased branch** (`git push --force-with-lease origin feat/adapter-iptc`), after the user says so.
+2. **Kernel tier.** On the host: `sudo modprobe ip_tables iptable_mangle`. Then run
+   `docker-compose -f sandbox/docker-compose.yml run --rm sandbox /test-builds/build-unit/adapter_iptc/test/adapter_iptc_kernel_tests`
+   (15 `MangleKernelTest` cases, all skipped so far). `appendRule`/`listRules` are not verified against the
+   kernel until they pass; a failure is fixed in its own commit. This is also the base of the I3 exit gate (H-208).
+3. **H-201 done = squash-merge `feat/adapter-iptc` into `develop`** (slice branching rule: feature branches are
+   squash-merged; `develop` is not merged into `master` before the end-to-end validation). Waits for the user.
+   H-202 and H-203 are met by the green gate above (format, tidy, unit, ASan, Valgrind on `adapter_iptc`).
+4. **H-205, the use case for M0** (`logging` present gives an NFLOG rule through `MangleAdapter`, absent removes
+   it). `MangleAdapter::addNflogRule`, `readNflogRules` and `MangleAdapter::flush`/`createChain` already exist; what
+   is missing is the use case that decides from the parsed `desired`. Then **H-204** (controller, on top of
+   `adapter_socket` and the parser E1, both on `develop`), **H-206** (`main.cpp`, `SystemAdapters::createPosix()`),
+   **H-207** (systemd units) and **H-208** (`socat` driver + `iptables-save`, the I3 exit gate).
+5. **Hub docs:** `hub-bellerophon/docs/design/status.md` (snapshot 2026-11-13) and the I3 line of the hub
+   `CLAUDE.md` still call `adapter_iptc` "parked, PoC, 50 cases"; update them when the branch lands on `develop`.
+
+Open decisions and loose ends (none blocks the steps above):
+
+- `RuleBuilder::setProtocol` TODO: the kernel needs the rule protocol to match the protocol of `-m tcp`/`-m udp`;
+  planned `toBody()` mappers, not needed until the redirection DNAT reaches this adapter.
+- `RuleMapper` public methods are static; an `IRuleMapper` interface was deferred by the user.
+- Free helpers kept by the user in anonymous namespaces: `isUtf8Continuation`, `prefixBytesThatFit` (NFLOG prefix cut
+  on a UTF-8 boundary) and `HeaderLayout`/`fieldsFitTheHeader` (extension header). `MAX_RULE_BYTES` is the one
+  constant in `rule_mapper.cpp`.
+- The untracked `.ai-memory.toml`, `apply`, `apply.sh`, `changes.diff` and `compress.sh` in the repo root are the
+  user's, not part of any commit.
+
 - Deviations from Task 3 as written: `toEntry` also throws `std::length_error` past the 16-bit offsets
   (`RuleTooLargeForTheOffsetsThrows`); the parameterized fixtures are named `RuleMapperToEntryShape`,
   `RuleMapperMalformedMatches` and `RuleMapperMalformedTarget`; the test redefines the constants instead of
