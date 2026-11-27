@@ -1,7 +1,8 @@
 # adapter_iptc: PayloadMapper and PayloadIdentity
 
 **Status:** accepted 2026-11-15 (decision 3 of [adapter-iptc-rule-mapper.md](adapter-iptc-rule-mapper.md)),
-implementing in Task 2 of the [plan](superpowers/plans/2026-11-15-adapter-iptc-rule-mapper.md). The
+implemented 2026-11-19 in Task 2 of the [plan](superpowers/plans/2026-11-15-adapter-iptc-rule-mapper.md)
+(`payload_mapper.h`, test `payload_mapper_test.cpp`). The
 `KernelPayload` concept in the last section was adopted 2026-11-19 in place of the two `static_assert`s.
 **Scope:** `adapter_iptc/include/adapter_iptc/mappers/payload_mapper.h`: how one kernel payload struct
 (`xt_mark_mtinfo1`, `xt_nflog_info`, ...) becomes the bytes of an `ExtensionParam` and back.

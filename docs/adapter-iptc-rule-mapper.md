@@ -1,6 +1,10 @@
-# adapter_iptc: rule DTOs and mappers, RuleLayout behind IptcHelper
+# adapter_iptc: rule DTOs and mappers, the byte layout behind RuleMapper
 
-**Status:** accepted 2026-11-15, not implemented.
+**Status:** accepted 2026-11-15, implemented 2026-11-26 (`mappers/rule_mapper.h`, `mappers/payload_mapper.h`,
+the seven `mappers/*_mapper.h`, `builder/rule_builder.h`; tests `rule_mapper_test.cpp`,
+`payload_mapper_test.cpp`, `match_mapper_test.cpp`, `target_mapper_test.cpp`, `rule_builder_test.cpp`).
+`RuleLayout` folded into `RuleMapper`'s private members. The kernel tier (`mangle_kernel_test.cpp`) has
+not run against the new path yet: it skips where `ip_tables` is not loaded.
 **Scope:** `adapter_iptc`: how a rule crosses from `MangleAdapter` down to libiptc and back, and who
 knows the byte layout of an `ipt_entry`.
 **Vocabulary:** Fowler, *Patterns of Enterprise Application Architecture*: **Mapper** (translates
@@ -10,7 +14,7 @@ crosses a boundary). The word "codec" is not used.
 ## Context
 
 `RuleLayout` (`include/adapter_iptc/rule_layout.h`) is the one place that knows the `ipt_entry`
-layout: headers, the `u.user` / `u.kernel` union, offsets, `XT_ALIGN`, `calloc` ownership. It should be
+layout: headers, the `u.user` / `u.kernel` union, offsets, `XT_ALIGN`, ownership of the rule buffer. It should be
 the lowest layer of the adapter, seen only by `IptcHelper`. Today it is used by ten translation units:
 
 | User | Why it needs the layout |
@@ -45,6 +49,22 @@ Two related smells:
 4. **Matches and targets become stateless mappers** (option B below): `MarkParam ⇄ ExtensionParam`, and
    so on. The `TemplateMatch` / `ExtensionTargetTemplate` / `ITargetStrategy` hierarchy goes away; why,
    and the boundary before and after: [adapter-iptc-hierarchy-removal.md](adapter-iptc-hierarchy-removal.md).
+   The header of each match and target is read and written by `ExtensionHeader<Header>`, by offset and
+   without the union: [adapter-iptc-extension-header.md](adapter-iptc-extension-header.md).
+   The rule buffer is a `std::vector<ipt_entry>` (`IptEntryBuffer`, `ipt_entry_buffer.h`), sized in whole
+   `ipt_entry` elements: it replaced `unique_ptr<ipt_entry, &std::free>` over `calloc` (2026-11-26) and
+   needs no `malloc`, no `void*` and no cast. `unique_ptr<ipt_entry[]>` was tried first and clang-tidy
+   rejects the array type (`avoid-c-arrays`); `vector<std::byte>` would have needed a cast to
+   `ipt_entry*`. The buffer can be up to `sizeof(ipt_entry) - 1` bytes larger than the rule, which is
+   harmless: `next_offset` holds the real size.
+   Corner case: a rule is longer than one `ipt_entry`, so its matches and target spill past the first
+   element into the next ones. Only element 0 is a real `ipt_entry`; the rest is storage, reached by
+   offset from `elems` (a zero-length array at the end of the struct, as in the kernel). Strictly the
+   language calls that an access past the end of the first element, but it stays inside the vector,
+   which is contiguous, aligned for `ipt_entry` and zeroed, and the code only addresses it by offset
+   (`bytesOf`, `elems`). Consequences: never read the elements as separate rules, never `push_back` or
+   resize a buffer after `toEntry` (a reallocation keeps the bytes but any pointer taken before is
+   stale), and always hand libiptc `entry.data()` as a whole, never `&entry[1]`.
 5. **DTOs never compose a mapper.** Data is on one side, translators on the other; only services
    (`IptcHelper`, the mappers, `MangleAdapter`) use mappers.
 6. **The enums move to `dtos/`.** `ConntrackMatch::State` and `StandardTarget::Verdict` become DTO
@@ -131,11 +151,11 @@ struct PayloadIdentity<xt_mark_mtinfo1>
 ```
 
 ```cpp
-// rule_mapper.h: the only header that names ipt_entry besides ipt_entry_ptr.h and iptc_helper.cpp.
+// rule_mapper.h: the only header that names ipt_entry besides ipt_entry_buffer.h and iptc_helper.cpp.
 struct RuleMapper
 {
 
-    [[nodiscard]] static IptEntryPtr toEntry(const RuleParam& rule);
+    [[nodiscard]] static IptEntryBuffer toEntry(const RuleParam& rule);
     [[nodiscard]] static RuleParam fromEntry(const ipt_entry& entry);
 };
 ```
@@ -316,7 +336,7 @@ Non-goals:
 
 - `RuleBody` and protocol validation.
 - New read sides (conntrack, tcp, udp, hashlimit have none today and get none).
-- Moving `ipt_entry_ptr.h` / `rule_mapper.h` to a private include directory: headers stay under
+- Moving `ipt_entry_buffer.h` / `rule_mapper.h` to a private include directory: headers stay under
   `include/adapter_iptc/`; encapsulation comes from no public interface needing them.
 - Inverted matches (`ip.invflags`), source ports, any new extension.
 

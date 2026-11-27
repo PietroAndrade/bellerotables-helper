@@ -1,7 +1,7 @@
 #include "adapter_iptc/mappers/rule_mapper.h"
 
 #include "adapter_iptc/dtos/rule.h"
-#include "adapter_iptc/ipt_entry_ptr.h"
+#include "adapter_iptc/ipt_entry_buffer.h"
 #include "parameterized_case.h"
 
 #include <algorithm>
@@ -124,18 +124,18 @@ class RuleMapperToEntryShape : public ::testing::TestWithParam<RuleShapeCase>
 
 TEST_P(RuleMapperToEntryShape, TargetOffsetCoversHeaderAndEveryMatch)
 {
-    const IptEntryPtr entry = RuleMapper::toEntry(ruleOf(GetParam().matches(), acceptTarget()));
+    IptEntryBuffer entry = RuleMapper::toEntry(ruleOf(GetParam().matches(), acceptTarget()));
     const std::size_t expectedTargetOffset = sizeof(ipt_entry) + GetParam().expectedMatchesBytes;
 
-    EXPECT_EQ(static_cast<std::size_t>(entry->target_offset), expectedTargetOffset);
+    EXPECT_EQ(static_cast<std::size_t>(entry[0].target_offset), expectedTargetOffset);
 }
 
 TEST_P(RuleMapperToEntryShape, NextOffsetIsTargetOffsetPlusTargetSize)
 {
-    const IptEntryPtr entry = RuleMapper::toEntry(ruleOf(GetParam().matches(), acceptTarget()));
-    const std::size_t targetOffset = entry->target_offset;
+    IptEntryBuffer entry = RuleMapper::toEntry(ruleOf(GetParam().matches(), acceptTarget()));
+    const std::size_t targetOffset = entry[0].target_offset;
 
-    EXPECT_EQ(static_cast<std::size_t>(entry->next_offset), targetOffset + STANDARD_TARGET_BYTES);
+    EXPECT_EQ(static_cast<std::size_t>(entry[0].next_offset), targetOffset + STANDARD_TARGET_BYTES);
 }
 
 INSTANTIATE_TEST_SUITE_P(RuleMapperToEntry, RuleMapperToEntryShape,
@@ -143,11 +143,10 @@ INSTANTIATE_TEST_SUITE_P(RuleMapperToEntry, RuleMapperToEntryShape,
 
 TEST(RuleMapperToEntry, MatchHeadersLandInInsertionOrder)
 {
-    const IptEntryPtr entry =
-        RuleMapper::toEntry(ruleOf({markMatch(), tcpMatch()}, acceptTarget()));
+    IptEntryBuffer entry = RuleMapper::toEntry(ruleOf({markMatch(), tcpMatch()}, acceptTarget()));
 
-    const xt_entry_match* mark = matchAt(*entry, 0);
-    const xt_entry_match* tcp = matchAt(*entry, MARK_MATCH_BYTES);
+    const xt_entry_match* mark = matchAt(entry[0], 0);
+    const xt_entry_match* tcp = matchAt(entry[0], MARK_MATCH_BYTES);
 
     EXPECT_STREQ(mark->u.user.name, MARK_NAME);
     EXPECT_EQ(mark->u.user.revision, MARK_REVISION);
@@ -160,18 +159,18 @@ TEST(RuleMapperToEntry, MatchHeadersLandInInsertionOrder)
 TEST(RuleMapperToEntry, MatchPayloadFollowsItsHeader)
 {
     const ExtensionParam mark = markMatch();
-    const IptEntryPtr entry = RuleMapper::toEntry(ruleOf({mark}, acceptTarget()));
+    IptEntryBuffer entry = RuleMapper::toEntry(ruleOf({mark}, acceptTarget()));
 
-    const unsigned char* payload = matchAt(*entry, 0)->data;
+    const unsigned char* payload = matchAt(entry[0], 0)->data;
 
     EXPECT_EQ(std::vector<unsigned char>(payload, payload + mark.payload.size()), mark.payload);
 }
 
 TEST(RuleMapperToEntry, StandardTargetVerdictLandsAtTargetOffset)
 {
-    const IptEntryPtr entry = RuleMapper::toEntry(ruleOf({markMatch()}, acceptTarget()));
+    IptEntryBuffer entry = RuleMapper::toEntry(ruleOf({markMatch()}, acceptTarget()));
 
-    const auto* standard = reinterpret_cast<const xt_standard_target*>(targetOf(*entry));
+    const auto* standard = reinterpret_cast<const xt_standard_target*>(targetOf(entry[0]));
 
     EXPECT_EQ(static_cast<std::size_t>(standard->target.u.user.target_size), STANDARD_TARGET_BYTES);
     EXPECT_EQ(standard->verdict, ACCEPT_VERDICT);
@@ -183,9 +182,9 @@ TEST(RuleMapperToEntry, ProtocolLandsInTheRuleHeader)
     RuleParam rule = ruleOf({tcpMatch()}, acceptTarget());
     rule.protocol = IPPROTO_TCP;
 
-    const IptEntryPtr entry = RuleMapper::toEntry(rule);
+    IptEntryBuffer entry = RuleMapper::toEntry(rule);
 
-    EXPECT_EQ(entry->ip.proto, IPPROTO_TCP);
+    EXPECT_EQ(entry[0].ip.proto, IPPROTO_TCP);
 }
 
 TEST(RuleMapperToEntry, RuleWithoutTargetThrows)
@@ -214,8 +213,8 @@ TEST(RuleMapperToEntry, LongNameIsCutToTheField)
     match.name = longName;
     match.revision = GIVEN_REVISION;
 
-    const IptEntryPtr entry = RuleMapper::toEntry(ruleOf({match}, acceptTarget()));
-    const xt_entry_match* header = matchAt(*entry, 0);
+    IptEntryBuffer entry = RuleMapper::toEntry(ruleOf({match}, acceptTarget()));
+    const xt_entry_match* header = matchAt(entry[0], 0);
 
     EXPECT_EQ(std::string(header->u.user.name), longName.substr(0, XT_EXTENSION_MAXNAMELEN - 1));
     EXPECT_EQ(header->u.user.revision, GIVEN_REVISION);
@@ -232,7 +231,7 @@ TEST(RuleMapperFromEntry, RoundTripsAnAlignedRule)
             ExtensionParam{.name = NFLOG_NAME, .revision = TARGET_REVISION, .payload = bytes(16)},
     };
 
-    EXPECT_EQ(RuleMapper::fromEntry(*RuleMapper::toEntry(rule)), rule);
+    EXPECT_EQ(RuleMapper::fromEntry(RuleMapper::toEntry(rule)[0]), rule);
 }
 
 TEST(RuleMapperFromEntry, PayloadKeepsAlignmentPadding)
@@ -243,7 +242,7 @@ TEST(RuleMapperFromEntry, PayloadKeepsAlignmentPadding)
         ruleOf({ExtensionParam{.name = MARK_NAME, .revision = MARK_REVISION, .payload = payload}},
                acceptTarget());
 
-    const RuleParam readBack = RuleMapper::fromEntry(*RuleMapper::toEntry(rule));
+    const RuleParam readBack = RuleMapper::fromEntry(RuleMapper::toEntry(rule)[0]);
 
     ASSERT_EQ(readBack.matches.size(), 1U);
     const std::vector<unsigned char>& readPayload = readBack.matches[0].payload;
@@ -281,10 +280,10 @@ class RuleMapperMalformedMatches : public ::testing::TestWithParam<MalformedMatc
 
 TEST_P(RuleMapperMalformedMatches, StopsTheWalkAndKeepsWhatIsSound)
 {
-    const IptEntryPtr entry = RuleMapper::toEntry(ruleOf({markMatch()}, acceptTarget()));
-    GetParam().edit(*entry);
+    IptEntryBuffer entry = RuleMapper::toEntry(ruleOf({markMatch()}, acceptTarget()));
+    GetParam().edit(entry[0]);
 
-    const RuleParam rule = RuleMapper::fromEntry(*entry);
+    const RuleParam rule = RuleMapper::fromEntry(entry[0]);
 
     ASSERT_EQ(rule.matches.size(), GetParam().expectedMatches);
     EXPECT_EQ(rule.target.has_value(), GetParam().expectedTarget);
@@ -336,10 +335,10 @@ class RuleMapperMalformedTarget : public ::testing::TestWithParam<MalformedTarge
 
 TEST_P(RuleMapperMalformedTarget, LeavesTheTargetEmpty)
 {
-    const IptEntryPtr entry = RuleMapper::toEntry(ruleOf({}, nflogTarget()));
-    GetParam().edit(*entry);
+    IptEntryBuffer entry = RuleMapper::toEntry(ruleOf({}, nflogTarget()));
+    GetParam().edit(entry[0]);
 
-    EXPECT_FALSE(RuleMapper::fromEntry(*entry).target.has_value());
+    EXPECT_FALSE(RuleMapper::fromEntry(entry[0]).target.has_value());
 }
 
 INSTANTIATE_TEST_SUITE_P(RuleMapperFromEntry, RuleMapperMalformedTarget,
@@ -348,10 +347,10 @@ INSTANTIATE_TEST_SUITE_P(RuleMapperFromEntry, RuleMapperMalformedTarget,
 
 TEST(RuleMapperFromEntry, HeaderOnlyTargetIsKeptWithAnEmptyPayload)
 {
-    const IptEntryPtr entry = RuleMapper::toEntry(ruleOf({}, nflogTarget()));
-    targetOf(*entry)->u.user.target_size = sizeof(xt_entry_target);
+    IptEntryBuffer entry = RuleMapper::toEntry(ruleOf({}, nflogTarget()));
+    targetOf(entry[0])->u.user.target_size = sizeof(xt_entry_target);
 
-    const RuleParam rule = RuleMapper::fromEntry(*entry);
+    const RuleParam rule = RuleMapper::fromEntry(entry[0]);
 
     ASSERT_TRUE(rule.target.has_value());
     EXPECT_EQ(rule.target->name, NFLOG_NAME);
@@ -360,10 +359,10 @@ TEST(RuleMapperFromEntry, HeaderOnlyTargetIsKeptWithAnEmptyPayload)
 
 TEST(RuleMapperFromEntry, BrokenMatchStillLeavesTheTarget)
 {
-    const IptEntryPtr entry = RuleMapper::toEntry(ruleOf({markMatch()}, nflogTarget()));
-    matchAt(*entry, 0)->u.user.match_size = 0;
+    IptEntryBuffer entry = RuleMapper::toEntry(ruleOf({markMatch()}, nflogTarget()));
+    matchAt(entry[0], 0)->u.user.match_size = 0;
 
-    const RuleParam rule = RuleMapper::fromEntry(*entry);
+    const RuleParam rule = RuleMapper::fromEntry(entry[0]);
 
     EXPECT_TRUE(rule.matches.empty());
     ASSERT_TRUE(rule.target.has_value());
@@ -375,10 +374,10 @@ TEST(RuleMapperFromEntry, BrokenMatchStillLeavesTheTarget)
 
 TEST(RuleMapperFromEntry, NameWithoutTerminatorIsBounded)
 {
-    const IptEntryPtr entry = RuleMapper::toEntry(ruleOf({markMatch()}, acceptTarget()));
-    std::memset(matchAt(*entry, 0)->u.user.name, 'm', XT_EXTENSION_MAXNAMELEN);
+    IptEntryBuffer entry = RuleMapper::toEntry(ruleOf({markMatch()}, acceptTarget()));
+    std::memset(matchAt(entry[0], 0)->u.user.name, 'm', XT_EXTENSION_MAXNAMELEN);
 
-    const RuleParam rule = RuleMapper::fromEntry(*entry);
+    const RuleParam rule = RuleMapper::fromEntry(entry[0]);
 
     ASSERT_EQ(rule.matches.size(), 1U);
     EXPECT_EQ(rule.matches[0].name, std::string(XT_EXTENSION_MAXNAMELEN, 'm'));
@@ -390,7 +389,7 @@ TEST(RuleMapperFromEntry, TargetRevisionIsRead)
     ExtensionParam target = nflogTarget();
     target.revision = TARGET_REVISION;
 
-    const RuleParam rule = RuleMapper::fromEntry(*RuleMapper::toEntry(ruleOf({}, target)));
+    const RuleParam rule = RuleMapper::fromEntry(RuleMapper::toEntry(ruleOf({}, target))[0]);
 
     ASSERT_TRUE(rule.target.has_value());
     EXPECT_EQ(rule.target->revision, TARGET_REVISION);
@@ -401,5 +400,5 @@ TEST(RuleMapperFromEntry, ProtocolIsRead)
     RuleParam rule = ruleOf({}, acceptTarget());
     rule.protocol = IPPROTO_TCP;
 
-    EXPECT_EQ(RuleMapper::fromEntry(*RuleMapper::toEntry(rule)).protocol, IPPROTO_TCP);
+    EXPECT_EQ(RuleMapper::fromEntry(RuleMapper::toEntry(rule)[0]).protocol, IPPROTO_TCP);
 }

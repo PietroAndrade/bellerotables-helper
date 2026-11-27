@@ -28,7 +28,10 @@ driven by the `Makefile`.
   but the kernel tier **skipped all 15 tests** (the host has no `ip_tables`/`iptable_mangle` module): run it
   after `sudo modprobe ip_tables iptable_mangle` before trusting `appendRule`/`listRules` against the kernel.
   `LegacyRuleBuilder` (test/legacy_rule_builder.h) keeps the old-class tests building until Task 6.
-- **Task 6 onward:** not started.
+- **Task 6 (delete the hierarchy):** steps 1 to 5 done, **step 6 (commit) still open**; in the tree, uncommitted.
+  Full gate green; `adapter_iptc_tests` 181 → 109. Not re-homed: `DeclaresItsProtocol` (5 cases; the protocol is
+  now `RuleBuilder::setProtocol`, covered by `ProtocolIsTheOneSet`) and the `NflogTarget(group, prefix)`
+  constructor test (the constructor is gone).
 - Deviations from Task 3 as written: `toEntry` also throws `std::length_error` past the 16-bit offsets
   (`RuleTooLargeForTheOffsetsThrows`); the parameterized fixtures are named `RuleMapperToEntryShape`,
   `RuleMapperMalformedMatches` and `RuleMapperMalformedTarget`; the test redefines the constants instead of
@@ -248,9 +251,9 @@ driven by the `Makefile`.
 - Consumes: everything above; nothing outside `adapter_iptc` uses the deleted files (verify in Step 1).
 - Produces: `RuleMapper`'s public surface unchanged. `RuleLayout`'s functions become private static members of `RuleMapper`, `ExtensionHeader` becomes a private nested struct, and the `NOLINT` blocks and `LEARN` comments move with them.
 
-- [ ] **Step 1: Check nothing else uses the files to delete.** `grep -rnE 'template_match|extension_target_template|i_target_strategy|matchs/|targets/|rule_layout|mock_builder|MockBuilder|TemplateMatch|ITargetStrategy|RuleLayout' --include=*.h --include=*.cpp --include=CMakeLists.txt .` from the repo root. Expected: hits only in the files this task deletes or edits.
-- [ ] **Step 2: Delete the files, create `iptc_exception_test.cpp`, fold `RuleLayout` into `RuleMapper`.**
-- [ ] **Step 3: Verify the confinement goal.** `grep -rln 'rule_mapper.h\|ipt_entry_ptr.h' adapter_iptc/include adapter_iptc/src` lists only `rule_mapper.h`/`.cpp` and `iptc_helper.cpp` (the `ipt_entry_ptr.h` hit in `rule_mapper.h` is expected). `grep -rn 'ipt_entry' adapter_iptc/include` hits only `rule_mapper.h` and `ipt_entry_ptr.h`.
-- [ ] **Step 4: Run the full gate** (Global Constraints). Expected: every stage passes. Compare the `adapter_iptc_tests` count with Task 5's run: the drop must match the deleted buffer-level cases that Tasks 3–4 re-homed. List any case that was not re-homed.
-- [ ] **Step 5: Update the docs.** In `docs/adapter-iptc-rule-mapper.md` set the status to `accepted 2026-11-15, implemented <date>`, naming the main files and tests as `socket-endpoint.md` does. In `CLAUDE.md`, fix any `adapter_iptc` class names that no longer exist.
+- [x] **Step 1: Check nothing else uses the files to delete.** `grep -rnE 'template_match|extension_target_template|i_target_strategy|matchs/|targets/|rule_layout|mock_builder|MockBuilder|TemplateMatch|ITargetStrategy|RuleLayout' --include=*.h --include=*.cpp --include=CMakeLists.txt .` from the repo root. Expected: hits only in the files this task deletes or edits.
+- [x] **Step 2: Delete the files, create `iptc_exception_test.cpp`, fold `RuleLayout` into `RuleMapper`.**
+- [x] **Step 3: Verify the confinement goal.** `grep -rln 'rule_mapper.h\|ipt_entry_ptr.h' adapter_iptc/include adapter_iptc/src` lists only `rule_mapper.h`/`.cpp` and `iptc_helper.cpp` (the `ipt_entry_ptr.h` hit in `rule_mapper.h` is expected). `grep -rn 'ipt_entry' adapter_iptc/include` hits only `rule_mapper.h` and `ipt_entry_ptr.h`.
+- [x] **Step 4: Run the full gate** (Global Constraints). Expected: every stage passes. Compare the `adapter_iptc_tests` count with Task 5's run: the drop must match the deleted buffer-level cases that Tasks 3–4 re-homed. List any case that was not re-homed.
+- [x] **Step 5: Update the docs.** In `docs/adapter-iptc-rule-mapper.md` set the status to `accepted 2026-11-15, implemented <date>`, naming the main files and tests as `socket-endpoint.md` does. In `CLAUDE.md`, fix any `adapter_iptc` class names that no longer exist.
 - [ ] **Step 6: Commit** (checkpoint): `refactor(adapter_iptc): drop the self-serializing matches, RuleLayout folds into RuleMapper`

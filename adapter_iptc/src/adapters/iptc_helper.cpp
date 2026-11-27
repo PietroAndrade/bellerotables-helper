@@ -2,7 +2,7 @@
 
 #include "adapter_iptc/dtos/rule.h"
 #include "adapter_iptc/exceptions/iptc_exception.h"
-#include "adapter_iptc/ipt_entry_ptr.h"
+#include "adapter_iptc/ipt_entry_buffer.h"
 #include "adapter_iptc/mappers/rule_mapper.h"
 
 #include <cerrno>
@@ -81,9 +81,9 @@ void IptcHelper::flushEntries()
 */
 void IptcHelper::appendRule(const RuleParam& rule)
 {
-    const IptEntryPtr entry = RuleMapper::toEntry(rule);
+    const IptEntryBuffer entry = RuleMapper::toEntry(rule);
     ensureOpen();
-    if (iptc_append_entry(m_chain.c_str(), entry.get(), m_handle) == 0)
+    if (iptc_append_entry(m_chain.c_str(), entry.data(), m_handle) == 0)
     {
         throwLastError("iptc_append_entry(" + m_chain + ")");
     }

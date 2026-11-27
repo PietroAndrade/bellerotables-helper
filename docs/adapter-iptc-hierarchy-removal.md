@@ -1,8 +1,8 @@
 # adapter_iptc: removing the TemplateMatch / ExtensionTargetTemplate hierarchy
 
 **Status:** accepted 2026-11-15 (decision 4 of [adapter-iptc-rule-mapper.md](adapter-iptc-rule-mapper.md)),
-not implemented. Tasks 4 to 6 of the [plan](superpowers/plans/2026-11-15-adapter-iptc-rule-mapper.md) carry
-it out.
+implemented 2026-11-26 in Tasks 4 to 6 of the [plan](superpowers/plans/2026-11-15-adapter-iptc-rule-mapper.md):
+the old classes and `RuleLayout` are deleted, `RuleBuilder` and `IIptcHelper` speak `RuleParam`.
 **Scope:** why the match and target class hierarchy goes away when the boundary becomes a DTO, and what
 replaces each part of it.
 

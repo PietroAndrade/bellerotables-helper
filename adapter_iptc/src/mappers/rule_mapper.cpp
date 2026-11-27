@@ -1,8 +1,7 @@
 #include "adapter_iptc/mappers/rule_mapper.h"
 
-#include "adapter_iptc/rule_layout.h"
-
 #include <algorithm>
+#include <cstddef>
 #include <cstdint>
 #include <cstring>
 #include <limits>
@@ -19,16 +18,9 @@ namespace {
 // LEARN: target_offset, next_offset and every extension size are 16-bit fields.
 constexpr std::size_t MAX_RULE_BYTES = std::numeric_limits<decltype(ipt_entry::next_offset)>::max();
 
-std::size_t matchBytes(const ExtensionParam& match)
-{
-    const std::size_t payloadBytes = match.payload.size();
-    const std::size_t bytes = XT_ALIGN(sizeof(xt_entry_match) + payloadBytes);
-    return bytes;
-}
-
 } // namespace
 
-IptEntryPtr RuleMapper::toEntry(const RuleParam& rule)
+IptEntryBuffer RuleMapper::toEntry(const RuleParam& rule)
 {
     const bool hasTarget = rule.target.has_value();
     if (!hasTarget)
@@ -39,13 +31,15 @@ IptEntryPtr RuleMapper::toEntry(const RuleParam& rule)
     std::size_t matchesBytes = 0;
     for (const ExtensionParam& match : rule.matches)
     {
-        matchesBytes += matchBytes(match);
+        const std::size_t payloadBytes = match.payload.size();
+        const std::size_t bytes = MatchHeader::sizeFor(payloadBytes);
+        matchesBytes += bytes;
     }
 
     const ExtensionParam& target = *rule.target;
     const std::size_t targetOffset = sizeof(ipt_entry) + matchesBytes;
     const std::size_t targetPayloadBytes = target.payload.size();
-    const std::size_t targetSize = XT_ALIGN(sizeof(xt_entry_target) + targetPayloadBytes);
+    const std::size_t targetSize = TargetHeader::sizeFor(targetPayloadBytes);
     const std::size_t total = targetOffset + targetSize;
 
     const bool fitsTheOffsets = total <= MAX_RULE_BYTES;
@@ -54,19 +48,20 @@ IptEntryPtr RuleMapper::toEntry(const RuleParam& rule)
         throw std::length_error("rule larger than the ipt_entry offsets can hold");
     }
 
-    IptEntryPtr entry = RuleLayout::allocateEntry(total);
-    entry->target_offset = targetOffset;
-    entry->next_offset = total;
-    entry->ip.proto = rule.protocol;
+    IptEntryBuffer entry = allocateEntry(total);
+    ipt_entry& header = entry[0];
+    header.target_offset = targetOffset;
+    header.next_offset = total;
+    header.ip.proto = rule.protocol;
 
-    unsigned char* position = entry->elems;
+    unsigned char* position = header.elems;
     for (const ExtensionParam& match : rule.matches)
     {
-        const std::size_t bytes = matchBytes(match);
-        const char* name = match.name.c_str();
-        RuleLayout::writeMatchHeader(position, bytes, name, match.revision);
+        const std::size_t payloadBytes = match.payload.size();
+        const std::size_t bytes = MatchHeader::sizeFor(payloadBytes);
+        MatchHeader::write(position, bytes, match.name, match.revision);
 
-        unsigned char* payload = RuleLayout::matchPayload(position);
+        unsigned char* payload = MatchHeader::payloadOf(position);
         /* LEARN: that's equivalent to
            std::copy(match.payload.begin(), match.payload.end(), payload);
         */
@@ -75,11 +70,10 @@ IptEntryPtr RuleMapper::toEntry(const RuleParam& rule)
         position += bytes;
     }
 
-    const char* targetName = target.name.c_str();
-    RuleLayout::writeTargetHeader(position, targetSize, targetName, target.revision);
+    TargetHeader::write(position, targetSize, target.name, target.revision);
 
-    unsigned char* targetPayload = RuleLayout::targetPayload(position);
-    std::ranges::copy(target.payload, targetPayload);
+    unsigned char* targetPayloadStart = TargetHeader::payloadOf(position);
+    std::ranges::copy(target.payload, targetPayloadStart);
     return entry;
 }
 
@@ -123,23 +117,23 @@ std::vector<ExtensionParam> RuleMapper::readMatches(const ipt_entry& entry)
         return matches;
     }
 
-    const unsigned char* entryStart = RuleLayout::bytesOf(entry);
+    const unsigned char* entryStart = bytesOf(entry);
     std::size_t matchOffset = matchesStart;
-    while (matchOffset + sizeof(xt_entry_match) <= matchesEnd)
+    while (matchOffset + MatchHeader::BYTES <= matchesEnd)
     {
         const unsigned char* matchStart = entryStart + matchOffset;
-        const ExtensionHeader header = RuleLayout::readMatchHeader(matchStart);
+        const MatchHeader header = MatchHeader::read(matchStart);
 
         // LEARN: match_size counts the match header plus its payload (and padding).
         const std::size_t matchEnd = matchOffset + header.size;
-        const bool coversItsHeader = header.size >= sizeof(xt_entry_match);
+        const bool coversItsHeader = header.size >= MatchHeader::BYTES;
         const bool endsBeforeTheTarget = matchEnd <= matchesEnd;
         if (!coversItsHeader || !endsBeforeTheTarget)
         {
             break;
         }
-        const std::size_t payloadBytes = header.size - sizeof(xt_entry_match);
-        const unsigned char* payload = RuleLayout::matchPayload(matchStart);
+        const std::size_t payloadBytes = header.size - MatchHeader::BYTES;
+        const unsigned char* payload = MatchHeader::payloadOf(matchStart);
         ExtensionParam match = extensionOf(header, payload, payloadBytes);
         matches.push_back(std::move(match));
         matchOffset = matchEnd;
@@ -164,32 +158,33 @@ std::optional<ExtensionParam> RuleMapper::readTarget(const ipt_entry& entry)
     const std::size_t entryEnd = entry.next_offset;
 
     // LEARN: the target starts after the rule header, and its own header must fit in the rule.
-    const std::size_t targetHeaderEnd = targetOffset + sizeof(xt_entry_target);
+    const std::size_t targetHeaderEnd = targetOffset + TargetHeader::BYTES;
     if (targetOffset < sizeof(ipt_entry) || targetHeaderEnd > entryEnd)
     {
         return std::nullopt;
     }
 
-    const unsigned char* targetStart = RuleLayout::bytesOf(entry) + targetOffset;
-    const ExtensionHeader header = RuleLayout::readTargetHeader(targetStart);
+    const unsigned char* targetStart = bytesOf(entry) + targetOffset;
+    const TargetHeader header = TargetHeader::read(targetStart);
 
     // LEARN: target_size counts the target header plus its payload (and padding).
     const std::size_t targetEnd = targetOffset + header.size;
-    const bool coversItsHeader = header.size >= sizeof(xt_entry_target);
+    const bool coversItsHeader = header.size >= TargetHeader::BYTES;
     const bool endsInsideTheRule = targetEnd <= entryEnd;
     if (!coversItsHeader || !endsInsideTheRule)
     {
         return std::nullopt;
     }
 
-    const std::size_t payloadBytes = header.size - sizeof(xt_entry_target);
-    const unsigned char* payload = RuleLayout::targetPayload(targetStart);
+    const std::size_t payloadBytes = header.size - TargetHeader::BYTES;
+    const unsigned char* payload = TargetHeader::payloadOf(targetStart);
     ExtensionParam target = extensionOf(header, payload, payloadBytes);
     return target;
 }
 
-ExtensionParam RuleMapper::extensionOf(const ExtensionHeader& header, const unsigned char* payload,
-                                       std::size_t payloadBytes)
+template <ExtensionHeaderType Header>
+ExtensionParam RuleMapper::extensionOf(const ExtensionHeader<Header>& header,
+                                       const unsigned char* payload, std::size_t payloadBytes)
 {
     const char* nameField = header.name.data();
     const std::size_t nameFieldBytes = header.name.size();
@@ -205,4 +200,18 @@ ExtensionParam RuleMapper::extensionOf(const ExtensionHeader& header, const unsi
         .payload = std::move(payloadCopy),
     };
     return extension;
+}
+
+IptEntryBuffer RuleMapper::allocateEntry(std::size_t bytes)
+{
+    // LEARN: rounded up to whole ipt_entry elements; the vector value-initializes them, so it is
+    // zeroed.
+    const std::size_t count = (bytes + sizeof(ipt_entry) - 1) / sizeof(ipt_entry);
+    return IptEntryBuffer(count);
+}
+
+const unsigned char* RuleMapper::bytesOf(const ipt_entry& entry)
+{
+    // LEARN: an object viewed as bytes. NOLINTNEXTLINE(bugprone-casting-through-void)
+    return static_cast<const unsigned char*>(static_cast<const void*>(&entry));
 }
