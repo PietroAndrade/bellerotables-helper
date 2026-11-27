@@ -1,0 +1,43 @@
+#ifndef IPTC_HELPER_H
+#define IPTC_HELPER_H
+
+#include "adapter_iptc/i_iptc_helper.h"
+
+#include <string>
+#include <vector>
+
+struct xtc_handle;
+
+/* LEARN: the only class that calls libiptc. It owns one xtc_handle (a snapshot of the table),
+   opened lazily. iptc_commit() does not release the snapshot, so commit() frees it, and the next
+   call opens a new one that reflects the kernel after the commit. Not copyable: two owners would
+   free the same handle.
+*/
+class IptcHelper final : public IIptcHelper
+{
+public:
+    IptcHelper(std::string table, std::string chain);
+    ~IptcHelper() override;
+
+    IptcHelper(const IptcHelper&) = delete;
+    IptcHelper& operator=(const IptcHelper&) = delete;
+    IptcHelper(IptcHelper&&) = delete;
+    IptcHelper& operator=(IptcHelper&&) = delete;
+
+    void createChain() override;
+    void flushEntries() override;
+    void appendRule(const RuleParam& rule) override;
+    void commit() override;
+    bool chainExists() override;
+    std::vector<RuleParam> listRules() override;
+
+private:
+    void ensureOpen();
+    void release();
+
+    std::string m_table;
+    std::string m_chain;
+    xtc_handle* m_handle = nullptr;
+};
+
+#endif
