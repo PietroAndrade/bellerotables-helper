@@ -37,29 +37,29 @@ driven by the `Makefile`.
   `ipt_entry_buffer.h`) instead of `calloc` + `std::free`.
 - **Rebase onto `develop` (2026-11-26):** done, no conflicts; 39 commits on top of `origin/develop`
   (`2b405db`). Full gate green after it (format-check, release, tidy-check, unit 11/11, ASan 11/11,
-  Valgrind 6/6). **Not pushed:** the branch history was rewritten, so the remote `feat/adapter-iptc` is
-  behind and needs `git push --force-with-lease`, which waits for the user's go-ahead.
+  Valgrind 6/6). The user pushed the rebased `feat/adapter-iptc`.
+- **Squash-merge into `develop` (2026-11-26):** done and pushed, `develop` is at `1d44778`
+  ("Squash merge feat/adapter-iptc into develop"; tree identical to the branch). H-201 to H-203 are closed.
+  `feat/adapter-iptc` stays until the work reaches `master`.
 - The final whole-branch review of the skill was replaced by the user's own review.
 
 ## Next session: where to pick up
 
-Order (backlog E2, `docs/plan/backlog.md`):
+Order (backlog E2, `docs/plan/backlog.md`). Steps 1 and 3 of the earlier list (push, squash-merge) are done.
 
-1. **Push the rebased branch** (`git push --force-with-lease origin feat/adapter-iptc`), after the user says so.
-2. **Kernel tier.** On the host: `sudo modprobe ip_tables iptable_mangle`. Then run
+1. **Kernel tier.** On the host: `sudo modprobe ip_tables iptable_mangle`. Then run
    `docker-compose -f sandbox/docker-compose.yml run --rm sandbox /test-builds/build-unit/adapter_iptc/test/adapter_iptc_kernel_tests`
    (15 `MangleKernelTest` cases, all skipped so far). `appendRule`/`listRules` are not verified against the
    kernel until they pass; a failure is fixed in its own commit. This is also the base of the I3 exit gate (H-208).
-3. **H-201 done = squash-merge `feat/adapter-iptc` into `develop`** (slice branching rule: feature branches are
-   squash-merged; `develop` is not merged into `master` before the end-to-end validation). Waits for the user.
-   H-202 and H-203 are met by the green gate above (format, tidy, unit, ASan, Valgrind on `adapter_iptc`).
-4. **H-205, the use case for M0** (`logging` present gives an NFLOG rule through `MangleAdapter`, absent removes
-   it). `MangleAdapter::addNflogRule`, `readNflogRules` and `MangleAdapter::flush`/`createChain` already exist; what
-   is missing is the use case that decides from the parsed `desired`. Then **H-204** (controller, on top of
-   `adapter_socket` and the parser E1, both on `develop`), **H-206** (`main.cpp`, `SystemAdapters::createPosix()`),
-   **H-207** (systemd units) and **H-208** (`socat` driver + `iptables-save`, the I3 exit gate).
-5. **Hub docs:** `hub-bellerophon/docs/design/status.md` (snapshot 2026-11-13) and the I3 line of the hub
-   `CLAUDE.md` still call `adapter_iptc` "parked, PoC, 50 cases"; update them when the branch lands on `develop`.
+2. **H-205, the use case for M0** (`logging` present gives an NFLOG rule through `MangleAdapter`, absent removes
+   it), on a new branch cut from `develop`. `MangleAdapter::addNflogRule`, `readNflogRules`, `flush` and
+   `createChain` already exist; what is missing is the use case that decides from the parsed `desired`. Then
+   **H-204** (controller, on top of `adapter_socket` and the parser E1, both on `develop`), **H-206**
+   (`main.cpp`, `SystemAdapters::createPosix()`), **H-207** (systemd units) and **H-208** (`socat` driver +
+   `iptables-save`, the I3 exit gate).
+3. **Hub:** `hub-bellerophon` pins this repo by SHA: move the submodule to the new `develop` (`1d44778`), and
+   update `docs/design/status.md` (snapshot 2026-11-13) and the I3 line of its `CLAUDE.md`, which still call
+   `adapter_iptc` "parked, PoC, 50 cases".
 
 Open decisions and loose ends (none blocks the steps above):
 
